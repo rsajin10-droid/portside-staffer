@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { getStaffList, addStaff, updateStaff, deleteStaff, importStaffBulk, type Staff } from '@/lib/storage';
@@ -46,14 +45,36 @@ export default function StaffManagement() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const wb = XLSX.read(ev.target?.result, { type: 'binary' });
-      const data = XLSX.utils.sheet_to_json<{ name?: string; Name?: string; mobile?: string; Mobile?: string }>(wb.Sheets[wb.SheetNames[0]]);
-      const items = data.map(r => ({ name: String(r.name || r.Name || ''), mobile: String(r.mobile || r.Mobile || '') })).filter(r => r.name && r.mobile);
-      const count = importStaffBulk(items);
-      refresh();
-      toast({ title: `${count} staff imported` });
+      try {
+        const data = ev.target?.result;
+        const wb = XLSX.read(data, { type: 'array' });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: '' });
+        
+        const items: { name: string; mobile: string }[] = [];
+        for (const row of jsonData) {
+          // Try various common header names
+          const nameVal = row['name'] || row['Name'] || row['NAME'] || row['Driver Name'] || row['driver name'] || row['Driver'] || row['driver'] || '';
+          const mobileVal = row['mobile'] || row['Mobile'] || row['MOBILE'] || row['Phone'] || row['phone'] || row['Mobile Number'] || row['mobile number'] || row['Contact'] || '';
+          const nameStr = String(nameVal).trim();
+          const mobileStr = String(mobileVal).replace(/\D/g, '').slice(-10);
+          if (nameStr && mobileStr.length === 10) {
+            items.push({ name: nameStr, mobile: mobileStr });
+          }
+        }
+        
+        if (items.length === 0) {
+          toast({ title: 'No valid data found. Ensure columns: Name, Mobile', variant: 'destructive' });
+          return;
+        }
+        const count = importStaffBulk(items);
+        refresh();
+        toast({ title: `${count} staff imported (${items.length - count} duplicates skipped)` });
+      } catch (err) {
+        toast({ title: 'Failed to read file. Ensure it is a valid Excel file.', variant: 'destructive' });
+      }
     };
-    reader.readAsBinaryString(file);
+    reader.readAsArrayBuffer(file);
     e.target.value = '';
   };
 
@@ -81,7 +102,7 @@ export default function StaffManagement() {
               {editId && <Button variant="outline" onClick={() => { setEditId(null); setName(''); setMobile(''); }}>Cancel</Button>}
               <label className="cursor-pointer">
                 <Button variant="outline" asChild><span><Upload className="h-4 w-4 mr-1" />Import Excel</span></Button>
-                <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleImport} />
+                <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImport} />
               </label>
               <Button variant="outline" onClick={() => setShowList(!showList)}>
                 <List className="h-4 w-4 mr-1" />{showList ? 'Hide' : 'All Staff'} ({staff.length})

@@ -14,7 +14,7 @@ import {
   getStaffList, getShiftAttendance, addAttendance, updateAttendance, deleteAttendance,
   getAttendance, type AttendanceRecord, type Staff
 } from '@/lib/storage';
-import { Pencil, Trash2, Share2, Download } from 'lucide-react';
+import { Pencil, Trash2, Download, MessageCircle } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -43,30 +43,49 @@ export default function Attendance() {
   const [editId, setEditId] = useState<string | null>(null);
   const [filterDriver, setFilterDriver] = useState('');
 
+  // Repeat last shift state
+  const [showRepeat, setShowRepeat] = useState(false);
+  const [repeatDate, setRepeatDate] = useState(today);
+  const [repeatShift, setRepeatShift] = useState<'day' | 'night'>(shift);
+  const [repeatRecords, setRepeatRecords] = useState<AttendanceRecord[]>([]);
+
   const refresh = () => setRecords(getShiftAttendance(date, currentShift));
   useEffect(() => { refresh(); }, [date, currentShift]);
 
-  // Repeat last shift
+  // Repeat last shift via URL param
   useEffect(() => {
     if (params.get('repeat') === '1') {
-      const lastShift = currentShift === 'day' ? 'night' : 'day';
-      const lastDate = currentShift === 'day' ? today : new Date(Date.now() - 86400000).toISOString().split('T')[0];
-      const lastAtt = getAttendance().filter(a => a.date === (currentShift === 'day' ? lastDate : today) && a.shift === lastShift);
-      let added = 0;
-      lastAtt.forEach(a => {
-        const res = addAttendance({ date, shift: currentShift, staffId: a.staffId, staffName: a.staffName, mobile: a.mobile, status: a.status, createdBy: user?.displayName || '' });
-        if (res) added++;
-      });
-      if (added) toast({ title: `${added} records copied from last shift` });
-      refresh();
+      loadLastShift();
+      setShowRepeat(true);
     }
   }, []);
 
-  const staff = useMemo(() => {
-    const s = selectedStaff ? staffList.find(x => x.id === selectedStaff) : null;
-    return s;
-  }, [selectedStaff, staffList]);
+  const loadLastShift = () => {
+    const lastShift = currentShift === 'day' ? 'night' : 'day';
+    const lastDate = currentShift === 'day' ? new Date(Date.now() - 86400000).toISOString().split('T')[0] : today;
+    const lastAtt = getAttendance().filter(a => a.date === lastDate && a.shift === lastShift);
+    setRepeatRecords(lastAtt);
+  };
 
+  const publishRepeat = () => {
+    let added = 0;
+    repeatRecords.forEach(a => {
+      const res = addAttendance({ date: repeatDate, shift: repeatShift, staffId: a.staffId, staffName: a.staffName, mobile: a.mobile, status: a.status, createdBy: user?.displayName || '' });
+      if (res) added++;
+    });
+    toast({ title: `${added} records published to ${repeatDate} ${repeatShift} shift` });
+    setShowRepeat(false);
+    setDate(repeatDate);
+    setCurrentShift(repeatShift);
+    refresh();
+  };
+
+  const removeRepeatRecord = (id: string) => setRepeatRecords(prev => prev.filter(r => r.id !== id));
+  const updateRepeatStatus = (id: string, status: AttendanceRecord['status']) => {
+    setRepeatRecords(prev => prev.map(r => r.id === id ? { ...r, status } : r));
+  };
+
+  const staff = useMemo(() => selectedStaff ? staffList.find(x => x.id === selectedStaff) : null, [selectedStaff, staffList]);
   const filteredStaff = staffList.filter(s => s.name.toLowerCase().includes(staffSearch.toLowerCase()));
   const filteredRecords = records.filter(r => !filterDriver || r.staffName.toLowerCase().includes(filterDriver.toLowerCase()));
 
@@ -88,52 +107,122 @@ export default function Attendance() {
   const handleDelete = (id: string) => { deleteAttendance(id); refresh(); toast({ title: 'Deleted' }); };
   const handleEdit = (r: AttendanceRecord) => { setEditId(r.id); setSelectedStaff(r.staffId); setStaffSearch(r.staffName); };
 
+  const buildShareText = () => {
+    const sorted = [...filteredRecords];
+    const extraDuty = sorted.filter(r => r.status === 'extra_duty');
+    const others = sorted.filter(r => r.status !== 'extra_duty');
+    const finalList = [...others, ...extraDuty];
+    let text = `*SKL - Attendance*\nDate: ${date} | Shift: ${currentShift.toUpperCase()}\nSupervisor: ${user?.displayName}\n\n`;
+    finalList.forEach((r, i) => {
+      let st = r.status === 'absent' ? '(A)' : r.status === 'extra_duty' ? '(ED)' : r.status === 'dcd' ? 'DCD' : r.status === 'dcn' ? 'DCN' : 'P';
+      text += `${i + 1}. ${r.staffName} - ${r.mobile} - ${st}\n`;
+    });
+    return text;
+  };
+
   const shareAsPdf = () => {
     const doc = new jsPDF();
     doc.setFontSize(16);
     doc.text('SKL - Attendance List', 14, 15);
     doc.setFontSize(10);
     doc.text(`Date: ${date} | Shift: ${currentShift.toUpperCase()} | Supervisor: ${user?.displayName}`, 14, 24);
-
     const sorted = [...filteredRecords];
     const extraDuty = sorted.filter(r => r.status === 'extra_duty');
     const others = sorted.filter(r => r.status !== 'extra_duty');
     const finalList = [...others, ...extraDuty];
-
     autoTable(doc, {
       startY: 30,
       head: [['#', 'Driver Name', 'Mobile', 'Status']],
       body: finalList.map((r, i) => {
-        let st = '';
-        if (r.status === 'absent') st = `(A)${r.status === 'absent' && (r as any).dutyChange ? ` ${(r as any).dutyChange}` : ''}`;
-        else if (r.status === 'dcd') st = 'DCD';
-        else if (r.status === 'dcn') st = 'DCN';
-        else if (r.status === 'extra_duty') st = '(ED)';
-        else st = 'P';
+        let st = r.status === 'absent' ? '(A)' : r.status === 'extra_duty' ? '(ED)' : r.status === 'dcd' ? 'DCD' : r.status === 'dcn' ? 'DCN' : 'P';
         return [i + 1, r.staffName, r.mobile, st];
       }),
     });
     doc.save(`attendance_${date}_${currentShift}.pdf`);
   };
 
-  const shareAsText = () => {
-    const sorted = [...filteredRecords];
-    const extraDuty = sorted.filter(r => r.status === 'extra_duty');
-    const others = sorted.filter(r => r.status !== 'extra_duty');
-    const finalList = [...others, ...extraDuty];
-    let text = `SKL - Attendance\nDate: ${date} | Shift: ${currentShift.toUpperCase()}\nSupervisor: ${user?.displayName}\n\n`;
-    finalList.forEach((r, i) => {
-      let st = r.status === 'absent' ? '(A)' : r.status === 'extra_duty' ? '(ED)' : r.status === 'dcd' ? 'DCD' : r.status === 'dcn' ? 'DCN' : 'P';
-      text += `${i + 1}. ${r.staffName} - ${r.mobile} - ${st}\n`;
-    });
-    navigator.clipboard.writeText(text);
-    toast({ title: 'Copied to clipboard' });
+  const shareWhatsApp = () => {
+    const text = buildShareText();
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
   return (
     <Layout>
       <div className="space-y-6 max-w-4xl mx-auto">
         <h2 className="text-2xl font-bold">Attendance</h2>
+
+        {/* Repeat Last Shift Section */}
+        {!showRepeat && (
+          <Button variant="outline" onClick={() => { loadLastShift(); setShowRepeat(true); }}>
+            Repeat Last Shift Attendance
+          </Button>
+        )}
+
+        {showRepeat && (
+          <Card className="border-accent">
+            <CardHeader><CardTitle>Repeat Last Shift Attendance</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Publish to Date</Label>
+                  <Input type="date" value={repeatDate} onChange={e => setRepeatDate(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Publish to Shift</Label>
+                  <Select value={repeatShift} onValueChange={v => setRepeatShift(v as 'day' | 'night')}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="day">Day</SelectItem>
+                      <SelectItem value="night">Night</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="overflow-auto max-h-60">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Driver</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {repeatRecords.map(r => (
+                      <TableRow key={r.id}>
+                        <TableCell>{r.staffName}</TableCell>
+                        <TableCell>
+                          <Select value={r.status} onValueChange={v => updateRepeatStatus(r.id, v as AttendanceRecord['status'])}>
+                            <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="present">Present</SelectItem>
+                              <SelectItem value="absent">Absent</SelectItem>
+                              <SelectItem value="extra_duty">Extra Duty</SelectItem>
+                              <SelectItem value="dcd">DCD</SelectItem>
+                              <SelectItem value="dcn">DCN</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <Button size="icon" variant="ghost" onClick={() => removeRepeatRecord(r.id)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {repeatRecords.length === 0 && (
+                      <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">No records from last shift</TableCell></TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={publishRepeat} disabled={repeatRecords.length === 0}>Publish</Button>
+                <Button variant="outline" onClick={() => setShowRepeat(false)}>Cancel</Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader><CardTitle>Mark Attendance</CardTitle></CardHeader>
@@ -161,7 +250,7 @@ export default function Attendance() {
                   onChange={e => { setStaffSearch(e.target.value); setSelectedStaff(''); }}
                 />
                 {staffSearch && !selectedStaff && (
-                  <div className="border rounded-md max-h-40 overflow-auto bg-popover">
+                  <div className="border rounded-md max-h-40 overflow-auto bg-popover z-50 relative">
                     {filteredStaff.map(s => (
                       <div key={s.id} className="px-3 py-2 hover:bg-muted cursor-pointer text-sm"
                         onClick={() => { setSelectedStaff(s.id); setStaffSearch(s.name); }}>
@@ -181,6 +270,7 @@ export default function Attendance() {
               <Button onClick={() => markAttendance('dcd')} className="bg-info hover:bg-info/90 text-info-foreground">DCD</Button>
               <Button onClick={() => markAttendance('dcn')} variant="secondary">DCN</Button>
             </div>
+            <p className="text-xs text-muted-foreground">DCD/DCN can be used with Present or Absent status</p>
           </CardContent>
         </Card>
 
@@ -190,7 +280,7 @@ export default function Attendance() {
             <div className="flex gap-2 flex-wrap">
               <Input placeholder="Filter by driver..." value={filterDriver} onChange={e => setFilterDriver(e.target.value)} className="w-48" />
               <Button size="sm" variant="outline" onClick={shareAsPdf}><Download className="h-4 w-4 mr-1" />PDF</Button>
-              <Button size="sm" variant="outline" onClick={shareAsText}><Share2 className="h-4 w-4 mr-1" />Copy Text</Button>
+              <Button size="sm" variant="outline" onClick={shareWhatsApp} className="text-success"><MessageCircle className="h-4 w-4 mr-1" />WhatsApp</Button>
             </div>
           </CardHeader>
           <CardContent>
