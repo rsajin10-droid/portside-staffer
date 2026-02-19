@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ClipboardCheck, Truck, Users, Clock, RotateCcw } from 'lucide-react';
+import { ClipboardCheck, Truck, Users, Clock, RotateCcw, TrendingUp, Shield } from 'lucide-react';
 import { getShiftAttendance } from '@/lib/storage';
 import seaportImg from '@/assets/seaport.jpg';
 
@@ -16,53 +16,79 @@ export default function Dashboard() {
   const present = shiftAtt.filter(a => a.status === 'present' || a.status === 'dcd' || a.status === 'dcn').length;
   const absent = shiftAtt.filter(a => a.status === 'absent').length;
   const overtime = shiftAtt.filter(a => a.status === 'extra_duty').length;
-
-  const stats = [
-    { label: 'Present', value: present, color: 'bg-success text-success-foreground', icon: Users },
-    { label: 'Absent', value: absent, color: 'bg-destructive text-destructive-foreground', icon: Clock },
-    { label: 'Extra Duty', value: overtime, color: 'bg-warning text-warning-foreground', icon: Clock },
-  ];
+  const total = shiftAtt.length;
 
   return (
     <Layout>
       <div className="space-y-6">
         {/* Hero */}
-        <div className="relative rounded-xl overflow-hidden h-48 md:h-64">
+        <div className="relative rounded-2xl overflow-hidden h-52 md:h-72 shadow-xl">
           <img src={seaportImg} alt="Vizhinjam Seaport" className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-primary/60 flex items-center justify-center flex-col">
-            <h1 className="text-2xl md:text-4xl font-bold text-primary-foreground">VIZHINJAM INTERNATIONAL SEAPORT</h1>
-            <p className="text-primary-foreground/80 mt-2">Welcome, {user?.displayName} | {shift.toUpperCase()} Shift | {today}</p>
+          <div className="absolute inset-0 bg-gradient-to-t from-primary/90 via-primary/50 to-transparent flex items-end p-6 md:p-8">
+            <div>
+              <h1 className="text-3xl md:text-5xl font-extrabold text-primary-foreground tracking-tight drop-shadow-lg">
+                VIZHINJAM INTERNATIONAL SEAPORT
+              </h1>
+              <div className="flex flex-wrap items-center gap-3 mt-3">
+                <span className="bg-secondary/80 text-secondary-foreground px-3 py-1 rounded-full text-sm font-medium">
+                  {user?.displayName}
+                </span>
+                <span className="bg-accent/80 text-accent-foreground px-3 py-1 rounded-full text-sm font-medium capitalize">
+                  {shift} Shift
+                </span>
+                <span className="bg-primary-foreground/20 text-primary-foreground px-3 py-1 rounded-full text-sm">
+                  {today}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {stats.map(s => (
-            <Card key={s.label} className={`${s.color} border-0`}>
-              <CardContent className="p-4 flex items-center gap-4">
-                <s.icon className="h-8 w-8 opacity-80" />
-                <div>
-                  <p className="text-3xl font-bold">{s.value}</p>
-                  <p className="text-sm opacity-80">{s.label}</p>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <Card className="bg-gradient-to-br from-success/90 to-success border-0 shadow-lg hover:shadow-xl transition-shadow">
+            <CardContent className="p-5 flex flex-col items-center text-center">
+              <Users className="h-8 w-8 text-success-foreground mb-2" />
+              <p className="text-4xl font-black text-success-foreground">{present}</p>
+              <p className="text-sm text-success-foreground/80 font-medium">Present</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-destructive/90 to-destructive border-0 shadow-lg hover:shadow-xl transition-shadow">
+            <CardContent className="p-5 flex flex-col items-center text-center">
+              <Clock className="h-8 w-8 text-destructive-foreground mb-2" />
+              <p className="text-4xl font-black text-destructive-foreground">{absent}</p>
+              <p className="text-sm text-destructive-foreground/80 font-medium">Absent</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-warning/90 to-warning border-0 shadow-lg hover:shadow-xl transition-shadow">
+            <CardContent className="p-5 flex flex-col items-center text-center">
+              <TrendingUp className="h-8 w-8 text-warning-foreground mb-2" />
+              <p className="text-4xl font-black text-warning-foreground">{overtime}</p>
+              <p className="text-sm text-warning-foreground/80 font-medium">Extra Duty</p>
+            </CardContent>
+          </Card>
+          <Card className="bg-gradient-to-br from-info/90 to-info border-0 shadow-lg hover:shadow-xl transition-shadow">
+            <CardContent className="p-5 flex flex-col items-center text-center">
+              <Shield className="h-8 w-8 text-info-foreground mb-2" />
+              <p className="text-4xl font-black text-info-foreground">{total}</p>
+              <p className="text-sm text-info-foreground/80 font-medium">Total</p>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Quick Actions */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Button onClick={() => navigate('/attendance')} className="h-20 flex-col gap-2" variant="outline">
-            <ClipboardCheck className="h-6 w-6" /> Attendance
+          <Button onClick={() => navigate('/attendance')} className="h-20 flex-col gap-2 shadow-md hover:shadow-lg transition-shadow" variant="outline">
+            <ClipboardCheck className="h-6 w-6 text-success" /> <span>Attendance</span>
           </Button>
-          <Button onClick={() => navigate('/job-allotment')} className="h-20 flex-col gap-2" variant="outline">
-            <Truck className="h-6 w-6" /> Job Allotment
+          <Button onClick={() => navigate('/job-allotment')} className="h-20 flex-col gap-2 shadow-md hover:shadow-lg transition-shadow" variant="outline">
+            <Truck className="h-6 w-6 text-info" /> <span>Job Allotment</span>
           </Button>
-          <Button onClick={() => navigate('/attendance?repeat=1')} className="h-20 flex-col gap-2 text-xs" variant="outline">
-            <RotateCcw className="h-6 w-6" /> Repeat Last Attendance
+          <Button onClick={() => navigate('/attendance?repeat=1')} className="h-20 flex-col gap-2 text-xs shadow-md hover:shadow-lg transition-shadow" variant="outline">
+            <RotateCcw className="h-6 w-6 text-warning" /> <span>Repeat Attendance</span>
           </Button>
-          <Button onClick={() => navigate('/job-allotment?repeat=1')} className="h-20 flex-col gap-2 text-xs" variant="outline">
-            <RotateCcw className="h-6 w-6" /> Repeat Last Job Allot
+          <Button onClick={() => navigate('/job-allotment?repeat=1')} className="h-20 flex-col gap-2 text-xs shadow-md hover:shadow-lg transition-shadow" variant="outline">
+            <RotateCcw className="h-6 w-6 text-accent" /> <span>Repeat Job Allot</span>
           </Button>
         </div>
       </div>
