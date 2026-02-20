@@ -5,9 +5,25 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { updateUserPassword, getUsers } from '@/lib/storage';
+import { Download, Upload } from 'lucide-react';
+
+interface UserProfile {
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  dob: string;
+  profileImage: string;
+}
+
+const getProfile = (userId: string): UserProfile => {
+  try { return JSON.parse(localStorage.getItem(`skl_profile_${userId}`) || '{}'); } catch { return {} as UserProfile; }
+};
+const saveProfile = (userId: string, p: UserProfile) => localStorage.setItem(`skl_profile_${userId}`, JSON.stringify(p));
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -18,9 +34,16 @@ export default function SettingsPage() {
   const [isDark, setIsDark] = useState(false);
   const [email, setEmail] = useState('');
 
+  // Profile
+  const [profile, setProfile] = useState<UserProfile>({ name: '', email: '', phone: '', address: '', dob: '', profileImage: '' });
+
   useEffect(() => {
     setIsDark(document.documentElement.classList.contains('dark'));
-  }, []);
+    if (user) {
+      const p = getProfile(user.id);
+      setProfile({ name: p.name || user.displayName, email: p.email || '', phone: p.phone || '', address: p.address || '', dob: p.dob || '', profileImage: p.profileImage || '' });
+    }
+  }, [user]);
 
   const toggleTheme = () => {
     const next = !isDark;
@@ -46,40 +69,149 @@ export default function SettingsPage() {
     toast({ title: 'Backup email saved' });
   };
 
+  const handleSaveProfile = () => {
+    if (!user) return;
+    saveProfile(user.id, profile);
+    toast({ title: 'Profile saved' });
+  };
+
+  const handleProfileImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setProfile(p => ({ ...p, profileImage: reader.result as string }));
+    reader.readAsDataURL(file);
+  };
+
+  // Data Recovery
+  const exportData = () => {
+    const keys = ['skl_users', 'skl_staff', 'skl_attendance', 'skl_jobs', 'skl_backup_email', 'skl_theme'];
+    const data: Record<string, string | null> = {};
+    keys.forEach(k => { data[k] = localStorage.getItem(k); });
+    // Also export profiles
+    Object.keys(localStorage).filter(k => k.startsWith('skl_profile_')).forEach(k => { data[k] = localStorage.getItem(k); });
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `skl_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.click(); URL.revokeObjectURL(url);
+    toast({ title: 'Data exported successfully' });
+  };
+
+  const importData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result as string);
+        Object.entries(data).forEach(([k, v]) => {
+          if (v !== null && typeof v === 'string') localStorage.setItem(k, v);
+        });
+        toast({ title: 'Data imported. Refresh to apply.' });
+      } catch {
+        toast({ title: 'Invalid backup file', variant: 'destructive' });
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <Layout>
       <div className="space-y-6 max-w-2xl mx-auto">
         <h2 className="text-2xl font-bold">Settings</h2>
 
-        <Card>
-          <CardHeader><CardTitle>Change Password</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2"><Label>Current Password</Label><Input type="password" value={oldPw} onChange={e => setOldPw(e.target.value)} /></div>
-            <div className="space-y-2"><Label>New Password</Label><Input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} /></div>
-            <div className="space-y-2"><Label>Confirm New Password</Label><Input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} /></div>
-            <Button onClick={handleChangePassword}>Update Password</Button>
-          </CardContent>
-        </Card>
+        <Tabs defaultValue="profile">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="profile">Profile</TabsTrigger>
+            <TabsTrigger value="password">Password</TabsTrigger>
+            <TabsTrigger value="theme">Theme</TabsTrigger>
+            <TabsTrigger value="data">Data</TabsTrigger>
+          </TabsList>
 
-        <Card>
-          <CardHeader><CardTitle>Theme</CardTitle></CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <Label>Dark Mode</Label>
-            <Switch checked={isDark} onCheckedChange={toggleTheme} />
-          </CardContent>
-        </Card>
+          <TabsContent value="profile">
+            <Card>
+              <CardHeader><CardTitle>Profile</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-4">
+                  {profile.profileImage ? (
+                    <img src={profile.profileImage} alt="Profile" className="w-20 h-20 rounded-full object-cover border-2 border-primary" />
+                  ) : (
+                    <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center text-2xl font-bold text-muted-foreground">
+                      {(profile.name || '?')[0]?.toUpperCase()}
+                    </div>
+                  )}
+                  <div>
+                    <Label className="cursor-pointer text-primary hover:underline">
+                      Change Photo
+                      <input type="file" accept="image/*" className="hidden" onChange={handleProfileImage} />
+                    </Label>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2"><Label>Name</Label><Input value={profile.name} onChange={e => setProfile(p => ({ ...p, name: e.target.value }))} /></div>
+                  <div className="space-y-2"><Label>Email</Label><Input type="email" value={profile.email} onChange={e => setProfile(p => ({ ...p, email: e.target.value }))} /></div>
+                  <div className="space-y-2"><Label>Phone</Label><Input value={profile.phone} onChange={e => setProfile(p => ({ ...p, phone: e.target.value }))} /></div>
+                  <div className="space-y-2"><Label>Date of Birth</Label><Input type="date" value={profile.dob} onChange={e => setProfile(p => ({ ...p, dob: e.target.value }))} /></div>
+                </div>
+                <div className="space-y-2"><Label>Address</Label><Input value={profile.address} onChange={e => setProfile(p => ({ ...p, address: e.target.value }))} /></div>
+                <Button onClick={handleSaveProfile}>Save Profile</Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-        <Card>
-          <CardHeader><CardTitle>Data Backup</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Email for backup</Label>
-              <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" />
+          <TabsContent value="password">
+            <Card>
+              <CardHeader><CardTitle>Change Password</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2"><Label>Current Password</Label><Input type="password" value={oldPw} onChange={e => setOldPw(e.target.value)} /></div>
+                <div className="space-y-2"><Label>New Password</Label><Input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} /></div>
+                <div className="space-y-2"><Label>Confirm New Password</Label><Input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} /></div>
+                <Button onClick={handleChangePassword}>Update Password</Button>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="theme">
+            <Card>
+              <CardHeader><CardTitle>Theme</CardTitle></CardHeader>
+              <CardContent className="flex items-center justify-between">
+                <Label>Dark Mode</Label>
+                <Switch checked={isDark} onCheckedChange={toggleTheme} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="data">
+            <div className="space-y-4">
+              <Card>
+                <CardHeader><CardTitle>Data Backup</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Email for backup</Label>
+                    <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" />
+                  </div>
+                  <p className="text-xs text-muted-foreground">Auto backup daily at 12 AM (requires backend setup)</p>
+                  <Button onClick={handleSaveEmail} variant="outline">Save Email</Button>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle>Data Recovery</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-sm text-muted-foreground">Export all data as a backup file or import from a previous backup when using a new device.</p>
+                  <div className="flex gap-3">
+                    <Button onClick={exportData} variant="outline"><Download className="h-4 w-4 mr-2" />Export Data</Button>
+                    <Label className="cursor-pointer">
+                      <Button variant="outline" asChild><span><Upload className="h-4 w-4 mr-2" />Import Data</span></Button>
+                      <input type="file" accept=".json" className="hidden" onChange={importData} />
+                    </Label>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-            <p className="text-xs text-muted-foreground">Auto backup daily at 12 AM (requires backend setup)</p>
-            <Button onClick={handleSaveEmail} variant="outline">Save Email</Button>
-          </CardContent>
-        </Card>
+          </TabsContent>
+        </Tabs>
 
         <Card>
           <CardContent className="p-6 text-center space-y-2">
