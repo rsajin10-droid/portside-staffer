@@ -1,8 +1,10 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Layout } from '@/components/Layout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { ClipboardCheck, Truck, Users, Clock, RotateCcw, TrendingUp, Shield } from 'lucide-react';
 import { getShiftAttendance } from '@/lib/storage';
 import seaportImg from '@/assets/seaport.jpg';
@@ -11,6 +13,16 @@ export default function Dashboard() {
   const { user, shift } = useAuth();
   const navigate = useNavigate();
   const today = new Date().toISOString().split('T')[0];
+  const [profileImage, setProfileImage] = useState('');
+
+  useEffect(() => {
+    if (user) {
+      try {
+        const p = JSON.parse(localStorage.getItem(`skl_profile_${user.id}`) || '{}');
+        setProfileImage(p.profileImage || '');
+      } catch {}
+    }
+  }, [user]);
   const shiftAtt = getShiftAttendance(today, shift);
 
   const present = shiftAtt.filter(a => a.status === 'present' || a.status === 'dcd' || a.status === 'dcn').length;
@@ -30,7 +42,11 @@ export default function Dashboard() {
                 VIZHINJAM INTERNATIONAL SEAPORT
               </h1>
               <div className="flex flex-wrap items-center gap-3 mt-3">
-                <span className="bg-secondary/80 text-secondary-foreground px-3 py-1 rounded-full text-sm font-medium">
+                <span className="bg-secondary/80 text-secondary-foreground px-3 py-1 rounded-full text-sm font-medium inline-flex items-center gap-2">
+                  <Avatar className="h-6 w-6">
+                    {profileImage ? <AvatarImage src={profileImage} alt={user?.displayName} /> : null}
+                    <AvatarFallback className="text-xs bg-primary text-primary-foreground">{(user?.displayName || '?')[0]?.toUpperCase()}</AvatarFallback>
+                  </Avatar>
                   {user?.displayName}
                 </span>
                 <span className="bg-accent/80 text-accent-foreground px-3 py-1 rounded-full text-sm font-medium capitalize">
