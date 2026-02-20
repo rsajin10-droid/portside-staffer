@@ -36,8 +36,13 @@ export default function JobAllotment() {
   // Repeat last shift state
   const [showRepeat, setShowRepeat] = useState(false);
   const [repeatDate, setRepeatDate] = useState(today);
-  const [repeatShift, setRepeatShift] = useState<'day' | 'night'>(shift);
+  const [repeatShift, setRepeatShift] = useState<'day' | 'night'>(shift === 'day' ? 'night' : 'day');
   const [repeatRecords, setRepeatRecords] = useState<JobAllotmentRecord[]>([]);
+  const [editRepeatId, setEditRepeatId] = useState<string | null>(null);
+  const [editRepeatVehicle, setEditRepeatVehicle] = useState('');
+  const [editRepeatVehicleSearch, setEditRepeatVehicleSearch] = useState('');
+  const [editRepeatStaff, setEditRepeatStaff] = useState('');
+  const [editRepeatStaffSearch, setEditRepeatStaffSearch] = useState('');
 
   const refresh = () => setRecords(getShiftJobs(date, currentShift));
   useEffect(() => { refresh(); }, [date, currentShift]);
@@ -47,7 +52,6 @@ export default function JobAllotment() {
     return att.filter(a => a.status !== 'absent').map(a => staffList.find(s => s.id === a.staffId)).filter(Boolean) as Staff[];
   }, [date, currentShift, staffList]);
 
-  // Repeat last shift via URL param
   useEffect(() => {
     if (params.get('repeat') === '1') {
       loadLastShift();
@@ -76,6 +80,27 @@ export default function JobAllotment() {
   };
 
   const removeRepeatRecord = (id: string) => setRepeatRecords(prev => prev.filter(r => r.id !== id));
+
+  const startEditRepeat = (r: JobAllotmentRecord) => {
+    setEditRepeatId(r.id);
+    setEditRepeatVehicle(r.vehicleNumber);
+    setEditRepeatVehicleSearch(r.vehicleNumber);
+    setEditRepeatStaff(r.staffId);
+    setEditRepeatStaffSearch(r.staffName);
+  };
+
+  const saveEditRepeat = () => {
+    if (!editRepeatId || !editRepeatVehicle || !editRepeatStaff) return;
+    const s = staffList.find(x => x.id === editRepeatStaff);
+    if (!s) return;
+    setRepeatRecords(prev => prev.map(r => r.id === editRepeatId ? { ...r, vehicleNumber: editRepeatVehicle, staffId: s.id, staffName: s.name, mobile: s.mobile } : r));
+    setEditRepeatId(null);
+    setEditRepeatVehicle(''); setEditRepeatVehicleSearch('');
+    setEditRepeatStaff(''); setEditRepeatStaffSearch('');
+  };
+
+  const filteredRepeatVehicles = VEHICLES.filter(v => v.toLowerCase().includes(editRepeatVehicleSearch.toLowerCase()));
+  const filteredRepeatStaff = staffList.filter(s => s.name.toLowerCase().includes(editRepeatStaffSearch.toLowerCase()));
 
   useEffect(() => {
     if (vehicle && !editId) {
@@ -144,7 +169,6 @@ export default function JobAllotment() {
       <div className="space-y-6 max-w-4xl mx-auto">
         <h2 className="text-2xl font-bold">Job Allotment</h2>
 
-        {/* Repeat Last Shift */}
         {!showRepeat && (
           <Button variant="outline" onClick={() => { loadLastShift(); setShowRepeat(true); }}>
             Repeat Last Shift Job Allotment
@@ -171,7 +195,7 @@ export default function JobAllotment() {
                   </Select>
                 </div>
               </div>
-              <div className="overflow-auto max-h-60">
+              <div className="overflow-auto max-h-80">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -184,14 +208,45 @@ export default function JobAllotment() {
                   <TableBody>
                     {repeatRecords.map(r => (
                       <TableRow key={r.id}>
-                        <TableCell className="font-medium">{r.vehicleNumber}</TableCell>
-                        <TableCell>{r.staffName}</TableCell>
-                        <TableCell>{r.mobile}</TableCell>
-                        <TableCell>
-                          <Button size="icon" variant="ghost" onClick={() => removeRepeatRecord(r.id)}>
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        </TableCell>
+                        {editRepeatId === r.id ? (
+                          <>
+                            <TableCell>
+                              <Input value={editRepeatVehicleSearch} onChange={e => { setEditRepeatVehicleSearch(e.target.value); setEditRepeatVehicle(''); }} className="w-24" />
+                              {editRepeatVehicleSearch && !editRepeatVehicle && (
+                                <div className="border rounded-md max-h-32 overflow-auto bg-popover absolute z-50">
+                                  {filteredRepeatVehicles.slice(0, 10).map(v => (
+                                    <div key={v} className="px-2 py-1 hover:bg-muted cursor-pointer text-xs" onClick={() => { setEditRepeatVehicle(v); setEditRepeatVehicleSearch(v); }}>{v}</div>
+                                  ))}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Input value={editRepeatStaffSearch} onChange={e => { setEditRepeatStaffSearch(e.target.value); setEditRepeatStaff(''); }} className="w-32" />
+                              {editRepeatStaffSearch && !editRepeatStaff && (
+                                <div className="border rounded-md max-h-32 overflow-auto bg-popover absolute z-50">
+                                  {filteredRepeatStaff.slice(0, 10).map(s => (
+                                    <div key={s.id} className="px-2 py-1 hover:bg-muted cursor-pointer text-xs" onClick={() => { setEditRepeatStaff(s.id); setEditRepeatStaffSearch(s.name); }}>{s.name}</div>
+                                  ))}
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell>{staffList.find(s => s.id === editRepeatStaff)?.mobile || r.mobile}</TableCell>
+                            <TableCell className="flex gap-1">
+                              <Button size="sm" onClick={saveEditRepeat}>Save</Button>
+                              <Button size="sm" variant="ghost" onClick={() => setEditRepeatId(null)}>Cancel</Button>
+                            </TableCell>
+                          </>
+                        ) : (
+                          <>
+                            <TableCell className="font-medium">{r.vehicleNumber}</TableCell>
+                            <TableCell>{r.staffName}</TableCell>
+                            <TableCell>{r.mobile}</TableCell>
+                            <TableCell className="flex gap-1">
+                              <Button size="icon" variant="ghost" onClick={() => startEditRepeat(r)}><Pencil className="h-4 w-4" /></Button>
+                              <Button size="icon" variant="ghost" onClick={() => removeRepeatRecord(r.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                            </TableCell>
+                          </>
+                        )}
                       </TableRow>
                     ))}
                     {repeatRecords.length === 0 && (

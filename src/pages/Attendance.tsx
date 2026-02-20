@@ -29,6 +29,14 @@ const statusLabels: Record<string, string> = {
   present: 'Present', absent: 'Absent', extra_duty: 'Extra Duty', dcd: 'DCD', dcn: 'DCN',
 };
 
+const getShareStatus = (status: string) => {
+  if (status === 'absent') return '(A)';
+  if (status === 'extra_duty') return '(ED)';
+  if (status === 'dcd') return 'DCD';
+  if (status === 'dcn') return 'DCN';
+  return ''; // Present - no marker
+};
+
 export default function Attendance() {
   const { user, shift } = useAuth();
   const { toast } = useToast();
@@ -46,13 +54,12 @@ export default function Attendance() {
   // Repeat last shift state
   const [showRepeat, setShowRepeat] = useState(false);
   const [repeatDate, setRepeatDate] = useState(today);
-  const [repeatShift, setRepeatShift] = useState<'day' | 'night'>(shift);
+  const [repeatShift, setRepeatShift] = useState<'day' | 'night'>(shift === 'day' ? 'night' : 'day');
   const [repeatRecords, setRepeatRecords] = useState<AttendanceRecord[]>([]);
 
   const refresh = () => setRecords(getShiftAttendance(date, currentShift));
   useEffect(() => { refresh(); }, [date, currentShift]);
 
-  // Repeat last shift via URL param
   useEffect(() => {
     if (params.get('repeat') === '1') {
       loadLastShift();
@@ -114,8 +121,8 @@ export default function Attendance() {
     const finalList = [...others, ...extraDuty];
     let text = `*SKL - Attendance*\nDate: ${date} | Shift: ${currentShift.toUpperCase()}\nSupervisor: ${user?.displayName}\n\n`;
     finalList.forEach((r, i) => {
-      let st = r.status === 'absent' ? '(A)' : r.status === 'extra_duty' ? '(ED)' : r.status === 'dcd' ? 'DCD' : r.status === 'dcn' ? 'DCN' : 'P';
-      text += `${i + 1}. ${r.staffName} - ${r.mobile} - ${st}\n`;
+      const st = getShareStatus(r.status);
+      text += `${i + 1}. ${r.staffName} - ${r.mobile}${st ? ' - ' + st : ''}\n`;
     });
     return text;
   };
@@ -134,8 +141,8 @@ export default function Attendance() {
       startY: 30,
       head: [['#', 'Driver Name', 'Mobile', 'Status']],
       body: finalList.map((r, i) => {
-        let st = r.status === 'absent' ? '(A)' : r.status === 'extra_duty' ? '(ED)' : r.status === 'dcd' ? 'DCD' : r.status === 'dcn' ? 'DCN' : 'P';
-        return [i + 1, r.staffName, r.mobile, st];
+        const st = getShareStatus(r.status);
+        return [i + 1, r.staffName, r.mobile, st || 'Present'];
       }),
     });
     doc.save(`attendance_${date}_${currentShift}.pdf`);
@@ -151,7 +158,6 @@ export default function Attendance() {
       <div className="space-y-6 max-w-4xl mx-auto">
         <h2 className="text-2xl font-bold">Attendance</h2>
 
-        {/* Repeat Last Shift Section */}
         {!showRepeat && (
           <Button variant="outline" onClick={() => { loadLastShift(); setShowRepeat(true); }}>
             Repeat Last Shift Attendance
@@ -270,7 +276,7 @@ export default function Attendance() {
               <Button onClick={() => markAttendance('dcd')} className="bg-info hover:bg-info/90 text-info-foreground">DCD</Button>
               <Button onClick={() => markAttendance('dcn')} variant="secondary">DCN</Button>
             </div>
-            <p className="text-xs text-muted-foreground">DCD/DCN can be used with Present or Absent status</p>
+            <p className="text-xs text-muted-foreground">DCD = Duty Change Day | DCN = Duty Change Night (used with Present or Absent)</p>
           </CardContent>
         </Card>
 
