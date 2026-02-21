@@ -22,6 +22,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function AutoLogin() {
+  const { user } = useAuth();
+  if (user) return <Navigate to="/dashboard" replace />;
+  return <Login />;
+}
+
 function ThemeInit() {
   useEffect(() => {
     const saved = localStorage.getItem('skl_theme');
@@ -39,7 +45,7 @@ const App = () => (
         <ThemeInit />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Login />} />
+            <Route path="/" element={<AutoLogin />} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/staff" element={<ProtectedRoute><StaffManagement /></ProtectedRoute>} />
             <Route path="/attendance" element={<ProtectedRoute><Attendance /></ProtectedRoute>} />

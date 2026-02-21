@@ -33,10 +33,12 @@ export default function JobAllotment() {
   const [records, setRecords] = useState<JobAllotmentRecord[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
 
-  // Repeat last shift state
+  // Repeat state
   const [showRepeat, setShowRepeat] = useState(false);
+  const [fromDate, setFromDate] = useState(today);
+  const [fromShift, setFromShift] = useState<'day' | 'night'>(shift === 'day' ? 'night' : 'day');
   const [repeatDate, setRepeatDate] = useState(today);
-  const [repeatShift, setRepeatShift] = useState<'day' | 'night'>(shift === 'day' ? 'night' : 'day');
+  const [repeatShift, setRepeatShift] = useState<'day' | 'night'>(shift);
   const [repeatRecords, setRepeatRecords] = useState<JobAllotmentRecord[]>([]);
   const [editRepeatId, setEditRepeatId] = useState<string | null>(null);
   const [editRepeatVehicle, setEditRepeatVehicle] = useState('');
@@ -54,17 +56,19 @@ export default function JobAllotment() {
 
   useEffect(() => {
     if (params.get('repeat') === '1') {
-      loadLastShift();
+      loadFromShift();
       setShowRepeat(true);
     }
   }, []);
 
-  const loadLastShift = () => {
-    const lastShift = currentShift === 'day' ? 'night' : 'day';
-    const lastDate = currentShift === 'day' ? new Date(Date.now() - 86400000).toISOString().split('T')[0] : today;
-    const lastJobs = getShiftJobs(lastDate, lastShift);
+  const loadFromShift = () => {
+    const lastJobs = getShiftJobs(fromDate, fromShift);
     setRepeatRecords(lastJobs);
   };
+
+  useEffect(() => {
+    if (showRepeat) loadFromShift();
+  }, [fromDate, fromShift]);
 
   const publishRepeat = () => {
     let added = 0;
@@ -166,28 +170,42 @@ export default function JobAllotment() {
 
   return (
     <Layout>
-      <div className="space-y-6 max-w-4xl mx-auto">
-        <h2 className="text-2xl font-bold">Job Allotment</h2>
+      <div className="space-y-4 max-w-4xl mx-auto px-1">
+        <h2 className="text-xl md:text-2xl font-bold">Job Allotment</h2>
 
         {!showRepeat && (
-          <Button variant="outline" onClick={() => { loadLastShift(); setShowRepeat(true); }}>
-            Repeat Last Shift Job Allotment
+          <Button variant="outline" size="sm" onClick={() => { loadFromShift(); setShowRepeat(true); }}>
+            Repeat Shift Jobs
           </Button>
         )}
 
         {showRepeat && (
           <Card className="border-accent">
-            <CardHeader><CardTitle>Repeat Last Shift Jobs</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Publish to Date</Label>
-                  <Input type="date" value={repeatDate} onChange={e => setRepeatDate(e.target.value)} />
+            <CardHeader className="pb-3"><CardTitle className="text-base md:text-lg">Repeat Jobs</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-muted-foreground">From Date</Label>
+                  <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="h-9 text-sm" />
                 </div>
-                <div className="space-y-2">
-                  <Label>Publish to Shift</Label>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-muted-foreground">From Shift</Label>
+                  <Select value={fromShift} onValueChange={v => setFromShift(v as 'day' | 'night')}>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="day">Day</SelectItem>
+                      <SelectItem value="night">Night</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-primary">Publish to Date</Label>
+                  <Input type="date" value={repeatDate} onChange={e => setRepeatDate(e.target.value)} className="h-9 text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-semibold text-primary">Publish to Shift</Label>
                   <Select value={repeatShift} onValueChange={v => setRepeatShift(v as 'day' | 'night')}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="day">Day</SelectItem>
                       <SelectItem value="night">Night</SelectItem>
@@ -195,14 +213,14 @@ export default function JobAllotment() {
                   </Select>
                 </div>
               </div>
-              <div className="overflow-auto max-h-80">
+              <div className="overflow-auto max-h-72 -mx-1">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Vehicle</TableHead>
-                      <TableHead>Driver</TableHead>
-                      <TableHead>Mobile</TableHead>
-                      <TableHead>Actions</TableHead>
+                      <TableHead className="text-xs">Vehicle</TableHead>
+                      <TableHead className="text-xs">Driver</TableHead>
+                      <TableHead className="text-xs hidden sm:table-cell">Mobile</TableHead>
+                      <TableHead className="text-xs w-20"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -210,71 +228,75 @@ export default function JobAllotment() {
                       <TableRow key={r.id}>
                         {editRepeatId === r.id ? (
                           <>
-                            <TableCell>
-                              <Input value={editRepeatVehicleSearch} onChange={e => { setEditRepeatVehicleSearch(e.target.value); setEditRepeatVehicle(''); }} className="w-24" />
-                              {editRepeatVehicleSearch && !editRepeatVehicle && (
-                                <div className="border rounded-md max-h-32 overflow-auto bg-popover absolute z-50">
-                                  {filteredRepeatVehicles.slice(0, 10).map(v => (
-                                    <div key={v} className="px-2 py-1 hover:bg-muted cursor-pointer text-xs" onClick={() => { setEditRepeatVehicle(v); setEditRepeatVehicleSearch(v); }}>{v}</div>
-                                  ))}
-                                </div>
-                              )}
+                            <TableCell className="py-1.5">
+                              <div className="relative">
+                                <Input value={editRepeatVehicleSearch} onChange={e => { setEditRepeatVehicleSearch(e.target.value); setEditRepeatVehicle(''); }} className="w-20 h-7 text-xs" />
+                                {editRepeatVehicleSearch && !editRepeatVehicle && (
+                                  <div className="border rounded-md max-h-32 overflow-auto bg-popover absolute z-50 shadow-lg w-24">
+                                    {filteredRepeatVehicles.slice(0, 10).map(v => (
+                                      <div key={v} className="px-2 py-1 hover:bg-muted cursor-pointer text-xs" onClick={() => { setEditRepeatVehicle(v); setEditRepeatVehicleSearch(v); }}>{v}</div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </TableCell>
-                            <TableCell>
-                              <Input value={editRepeatStaffSearch} onChange={e => { setEditRepeatStaffSearch(e.target.value); setEditRepeatStaff(''); }} className="w-32" />
-                              {editRepeatStaffSearch && !editRepeatStaff && (
-                                <div className="border rounded-md max-h-32 overflow-auto bg-popover absolute z-50">
-                                  {filteredRepeatStaff.slice(0, 10).map(s => (
-                                    <div key={s.id} className="px-2 py-1 hover:bg-muted cursor-pointer text-xs" onClick={() => { setEditRepeatStaff(s.id); setEditRepeatStaffSearch(s.name); }}>{s.name}</div>
-                                  ))}
-                                </div>
-                              )}
+                            <TableCell className="py-1.5">
+                              <div className="relative">
+                                <Input value={editRepeatStaffSearch} onChange={e => { setEditRepeatStaffSearch(e.target.value); setEditRepeatStaff(''); }} className="w-28 h-7 text-xs" />
+                                {editRepeatStaffSearch && !editRepeatStaff && (
+                                  <div className="border rounded-md max-h-32 overflow-auto bg-popover absolute z-50 shadow-lg w-36">
+                                    {filteredRepeatStaff.slice(0, 10).map(s => (
+                                      <div key={s.id} className="px-2 py-1 hover:bg-muted cursor-pointer text-xs" onClick={() => { setEditRepeatStaff(s.id); setEditRepeatStaffSearch(s.name); }}>{s.name}</div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </TableCell>
-                            <TableCell>{staffList.find(s => s.id === editRepeatStaff)?.mobile || r.mobile}</TableCell>
-                            <TableCell className="flex gap-1">
-                              <Button size="sm" onClick={saveEditRepeat}>Save</Button>
-                              <Button size="sm" variant="ghost" onClick={() => setEditRepeatId(null)}>Cancel</Button>
+                            <TableCell className="py-1.5 hidden sm:table-cell text-xs">{staffList.find(s => s.id === editRepeatStaff)?.mobile || r.mobile}</TableCell>
+                            <TableCell className="flex gap-0.5 py-1.5">
+                              <Button size="sm" className="h-7 text-xs" onClick={saveEditRepeat}>Save</Button>
+                              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setEditRepeatId(null)}>✕</Button>
                             </TableCell>
                           </>
                         ) : (
                           <>
-                            <TableCell className="font-medium">{r.vehicleNumber}</TableCell>
-                            <TableCell>{r.staffName}</TableCell>
-                            <TableCell>{r.mobile}</TableCell>
-                            <TableCell className="flex gap-1">
-                              <Button size="icon" variant="ghost" onClick={() => startEditRepeat(r)}><Pencil className="h-4 w-4" /></Button>
-                              <Button size="icon" variant="ghost" onClick={() => removeRepeatRecord(r.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                            <TableCell className="text-xs font-medium py-1.5">{r.vehicleNumber}</TableCell>
+                            <TableCell className="text-xs py-1.5">{r.staffName}</TableCell>
+                            <TableCell className="text-xs py-1.5 hidden sm:table-cell">{r.mobile}</TableCell>
+                            <TableCell className="flex gap-0.5 py-1.5">
+                              <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startEditRepeat(r)}><Pencil className="h-3.5 w-3.5" /></Button>
+                              <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeRepeatRecord(r.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                             </TableCell>
                           </>
                         )}
                       </TableRow>
                     ))}
                     {repeatRecords.length === 0 && (
-                      <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground">No records from last shift</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground text-xs">No records from selected shift</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>
               </div>
               <div className="flex gap-2">
-                <Button onClick={publishRepeat} disabled={repeatRecords.length === 0}>Publish</Button>
-                <Button variant="outline" onClick={() => setShowRepeat(false)}>Cancel</Button>
+                <Button size="sm" onClick={publishRepeat} disabled={repeatRecords.length === 0}>Publish</Button>
+                <Button size="sm" variant="outline" onClick={() => setShowRepeat(false)}>Cancel</Button>
               </div>
             </CardContent>
           </Card>
         )}
 
         <Card>
-          <CardHeader><CardTitle>{editId ? 'Edit Allotment' : 'New Allotment'}</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Date</Label>
-                <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
+          <CardHeader className="pb-3"><CardTitle className="text-base md:text-lg">{editId ? 'Edit Allotment' : 'New Allotment'}</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Date</Label>
+                <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="h-9 text-sm" />
               </div>
-              <div className="space-y-2">
-                <Label>Shift</Label>
+              <div className="space-y-1">
+                <Label className="text-xs">Shift</Label>
                 <Select value={currentShift} onValueChange={v => setCurrentShift(v as 'day' | 'night')}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="day">Day</SelectItem>
                     <SelectItem value="night">Night</SelectItem>
@@ -282,13 +304,14 @@ export default function JobAllotment() {
                 </Select>
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label>Vehicle Number</Label>
-                <Input placeholder="Type to search..." value={vehicleSearch}
-                  onChange={e => { setVehicleSearch(e.target.value); setVehicle(''); }} />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Vehicle Number</Label>
+                <Input placeholder="Search vehicle..." value={vehicleSearch}
+                  onChange={e => { setVehicleSearch(e.target.value); setVehicle(''); }}
+                  className="h-9 text-sm" />
                 {vehicleSearch && !vehicle && (
-                  <div className="border rounded-md max-h-40 overflow-auto bg-popover z-50 relative">
+                  <div className="border rounded-md max-h-40 overflow-auto bg-popover z-50 relative shadow-lg">
                     {filteredVehicles.slice(0, 20).map(v => (
                       <div key={v} className="px-3 py-2 hover:bg-muted cursor-pointer text-sm"
                         onClick={() => { setVehicle(v); setVehicleSearch(v); }}>{v}</div>
@@ -296,12 +319,13 @@ export default function JobAllotment() {
                   </div>
                 )}
               </div>
-              <div className="space-y-2">
-                <Label>Driver Name</Label>
-                <Input placeholder="Type to search..." value={staffSearch}
-                  onChange={e => { setStaffSearch(e.target.value); setSelectedStaff(''); setMobile(''); }} />
+              <div className="space-y-1">
+                <Label className="text-xs">Driver Name</Label>
+                <Input placeholder="Search driver..." value={staffSearch}
+                  onChange={e => { setStaffSearch(e.target.value); setSelectedStaff(''); setMobile(''); }}
+                  className="h-9 text-sm" />
                 {staffSearch && !selectedStaff && (
-                  <div className="border rounded-md max-h-40 overflow-auto bg-popover z-50 relative">
+                  <div className="border rounded-md max-h-40 overflow-auto bg-popover z-50 relative shadow-lg">
                     {filteredStaff.map(s => (
                       <div key={s.id} className="px-3 py-2 hover:bg-muted cursor-pointer text-sm"
                         onClick={() => { setSelectedStaff(s.id); setStaffSearch(s.name); setMobile(s.mobile); }}>
@@ -312,50 +336,50 @@ export default function JobAllotment() {
                   </div>
                 )}
               </div>
-              <div className="space-y-2">
-                <Label>Mobile</Label>
-                <Input value={mobile} readOnly className="bg-muted" />
+              <div className="space-y-1">
+                <Label className="text-xs">Mobile</Label>
+                <Input value={mobile} readOnly className="bg-muted h-9 text-sm" />
               </div>
             </div>
-            <Button onClick={handleAdd}><Plus className="h-4 w-4 mr-1" />{editId ? 'Update' : 'Allot'}</Button>
+            <Button size="sm" onClick={handleAdd}><Plus className="h-4 w-4 mr-1" />{editId ? 'Update' : 'Allot'}</Button>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
-            <CardTitle>Allotment List ({records.length})</CardTitle>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={shareAsPdf}><Download className="h-4 w-4 mr-1" />PDF</Button>
-              <Button size="sm" variant="outline" onClick={shareWhatsApp} className="text-success"><MessageCircle className="h-4 w-4 mr-1" />WhatsApp</Button>
+          <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2 pb-3">
+            <CardTitle className="text-base">List ({records.length})</CardTitle>
+            <div className="flex gap-1.5">
+              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={shareAsPdf}><Download className="h-3.5 w-3.5 mr-1" />PDF</Button>
+              <Button size="sm" variant="outline" className="h-8 text-xs text-success" onClick={shareWhatsApp}><MessageCircle className="h-3.5 w-3.5 mr-1" />WA</Button>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-2 md:px-6">
             <div className="overflow-auto max-h-96">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>#</TableHead>
-                    <TableHead>Vehicle</TableHead>
-                    <TableHead>Driver</TableHead>
-                    <TableHead>Mobile</TableHead>
-                    <TableHead>Actions</TableHead>
+                    <TableHead className="text-xs w-8">#</TableHead>
+                    <TableHead className="text-xs">Vehicle</TableHead>
+                    <TableHead className="text-xs">Driver</TableHead>
+                    <TableHead className="text-xs hidden sm:table-cell">Mobile</TableHead>
+                    <TableHead className="text-xs w-16"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {records.map((r, i) => (
                     <TableRow key={r.id}>
-                      <TableCell>{i + 1}</TableCell>
-                      <TableCell className="font-medium">{r.vehicleNumber}</TableCell>
-                      <TableCell>{r.staffName}</TableCell>
-                      <TableCell>{r.mobile}</TableCell>
-                      <TableCell className="flex gap-1">
-                        <Button size="icon" variant="ghost" onClick={() => handleEdit(r)}><Pencil className="h-4 w-4" /></Button>
-                        <Button size="icon" variant="ghost" onClick={() => handleDelete(r.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      <TableCell className="text-xs py-1.5">{i + 1}</TableCell>
+                      <TableCell className="text-xs font-medium py-1.5">{r.vehicleNumber}</TableCell>
+                      <TableCell className="text-xs py-1.5">{r.staffName}</TableCell>
+                      <TableCell className="text-xs py-1.5 hidden sm:table-cell">{r.mobile}</TableCell>
+                      <TableCell className="flex gap-0.5 py-1.5">
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(r)}><Pencil className="h-3.5 w-3.5" /></Button>
+                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(r.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                       </TableCell>
                     </TableRow>
                   ))}
                   {records.length === 0 && (
-                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground">No records</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground text-xs">No records</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
