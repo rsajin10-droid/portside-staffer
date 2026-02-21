@@ -4,10 +4,23 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useLocation } from 'react-router-dom';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, shift } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleBack = () => {
+    if (location.pathname === '/dashboard') {
+      // On dashboard, try to exit (close tab/go back in browser history)
+      if (window.history.length > 1) {
+        window.history.back();
+      }
+    } else {
+      navigate('/dashboard');
+    }
+  };
 
   return (
     <SidebarProvider>
@@ -16,7 +29,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <main className="flex-1 flex flex-col">
           <header className="h-14 border-b flex items-center px-4 gap-3 bg-card">
             <SidebarTrigger />
-            <Button variant="ghost" size="icon" onClick={() => navigate('/dashboard')}>
+            <Button variant="ghost" size="icon" onClick={handleBack}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div className="flex-1" />

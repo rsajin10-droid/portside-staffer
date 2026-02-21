@@ -37,8 +37,8 @@ export default function Dashboard() {
         {/* Hero */}
         <div className="relative rounded-2xl overflow-hidden h-44 md:h-64 shadow-xl">
           <img src={seaportImg} alt="Vizhinjam Seaport" className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col items-center justify-center p-4">
-            <img src={gradientLogo} alt="Vizhinjam International Seaport" className="h-16 md:h-28 object-contain drop-shadow-lg" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex items-start justify-start p-3 md:p-4">
+            <img src={gradientLogo} alt="Vizhinjam International Seaport" className="h-12 md:h-20 object-contain drop-shadow-lg" />
           </div>
         </div>
 

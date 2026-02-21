@@ -2,7 +2,9 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Users, ClipboardCheck, Truck, FileText, Settings, LogOut
 } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem,
@@ -16,6 +18,30 @@ const items = [
   { title: 'Reports', url: '/reports', icon: FileText },
   { title: 'Settings', url: '/settings', icon: Settings },
 ];
+
+function SidebarUserProfile({ user }: { user: { id: string; displayName: string } }) {
+  const [profileImage, setProfileImage] = useState('');
+  useEffect(() => {
+    try {
+      const p = JSON.parse(localStorage.getItem(`skl_profile_${user.id}`) || '{}');
+      setProfileImage(p.profileImage || '');
+    } catch {}
+  }, [user.id]);
+  return (
+    <div className="mt-auto p-4 border-t border-sidebar-border flex items-center gap-3">
+      <Avatar className="h-9 w-9 border-2 border-sidebar-primary">
+        {profileImage ? <AvatarImage src={profileImage} alt={user.displayName} /> : null}
+        <AvatarFallback className="text-xs bg-sidebar-accent text-sidebar-accent-foreground font-bold">
+          {(user.displayName || '?')[0]?.toUpperCase()}
+        </AvatarFallback>
+      </Avatar>
+      <div className="min-w-0">
+        <p className="text-xs text-sidebar-foreground/70">Logged in as</p>
+        <p className="text-sm font-medium text-sidebar-foreground truncate">{user.displayName}</p>
+      </div>
+    </div>
+  );
+}
 
 export function AppSidebar() {
   const navigate = useNavigate();
@@ -57,12 +83,7 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        {user && (
-          <div className="mt-auto p-4 border-t border-sidebar-border">
-            <p className="text-xs text-sidebar-foreground/70">Logged in as</p>
-            <p className="text-sm font-medium text-sidebar-foreground">{user.displayName}</p>
-          </div>
-        )}
+        {user && <SidebarUserProfile user={user} />}
       </SidebarContent>
     </Sidebar>
   );

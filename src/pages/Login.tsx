@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Sun, Moon, Ship, UserPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { addUser } from '@/lib/storage';
-import vizhinjamLogo from '@/assets/vizhinjam-logo.webp';
+import sklLogo from '@/assets/skl-logo.png';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -45,7 +45,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-primary p-4">
-      <img src={vizhinjamLogo} alt="Vizhinjam International Seaport" className="w-48 md:w-56 mb-6 drop-shadow-lg" />
+      <img src={sklLogo} alt="Sri Kamakshithai Logistics" className="w-40 md:w-48 mb-6 drop-shadow-lg" />
       <Card className="w-full max-w-md animate-fade-in">
         <CardHeader className="text-center space-y-3">
           <div className="mx-auto w-16 h-16 rounded-full bg-secondary flex items-center justify-center">
