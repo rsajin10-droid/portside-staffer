@@ -8,8 +8,9 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { updateUserPassword, getUsers } from '@/lib/storage';
-import { Download, Upload } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { updateUserPassword, getUsers, deactivateUser } from '@/lib/storage';
+import { Download, Upload, ShieldOff } from 'lucide-react';
 
 interface UserProfile {
   name: string;
@@ -26,7 +27,8 @@ const getProfile = (userId: string): UserProfile => {
 const saveProfile = (userId: string, p: UserProfile) => localStorage.setItem(`skl_profile_${userId}`, JSON.stringify(p));
 
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [oldPw, setOldPw] = useState('');
   const [newPw, setNewPw] = useState('');
@@ -212,6 +214,21 @@ export default function SettingsPage() {
             </div>
           </TabsContent>
         </Tabs>
+
+        <Card className="border-destructive/50">
+          <CardHeader><CardTitle className="text-destructive flex items-center gap-2"><ShieldOff className="h-5 w-5" />Deactivate Account</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-muted-foreground">Deactivating your account will prevent login. This action cannot be undone by yourself.</p>
+            <Button variant="destructive" onClick={() => {
+              if (!user) return;
+              if (window.confirm('Are you sure you want to deactivate your account? You will be logged out immediately.')) {
+                deactivateUser(user.id);
+                logout();
+                navigate('/');
+              }
+            }}>Deactivate My Account</Button>
+          </CardContent>
+        </Card>
 
         <Card>
           <CardContent className="p-6 text-center space-y-2">

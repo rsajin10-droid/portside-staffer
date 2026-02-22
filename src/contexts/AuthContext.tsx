@@ -35,6 +35,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const users = getUsers();
     const found = users.find(u => u.username === username && u.password === password);
     if (found) {
+      if (found.deactivated) return false;
       setUser(found);
       setShift(sh);
       localStorage.setItem('skl_session', JSON.stringify({ user: found, shift: sh }));

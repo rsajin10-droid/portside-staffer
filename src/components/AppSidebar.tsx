@@ -9,6 +9,7 @@ import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import sklLogo from '@/assets/skl-logo.png';
 
 const items = [
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
@@ -51,9 +52,12 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <SidebarContent>
-        <div className="p-4 border-b border-sidebar-border">
-          <h2 className="text-lg font-bold text-sidebar-primary">SKL</h2>
-          <p className="text-xs text-sidebar-foreground/70">Staff Management System</p>
+        <div className="p-4 border-b border-sidebar-border flex items-center gap-3">
+          <img src={sklLogo} alt="SKL" className="h-10 w-10 object-contain rounded" />
+          <div>
+            <h2 className="text-lg font-bold text-sidebar-primary">SKL</h2>
+            <p className="text-xs text-sidebar-foreground/70">Staff Management System</p>
+          </div>
         </div>
         <SidebarGroup>
           <SidebarGroupLabel>Menu</SidebarGroupLabel>

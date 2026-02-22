@@ -78,7 +78,7 @@ export default function StaffManagement() {
     e.target.value = '';
   };
 
-  const filtered = staff.filter(s => s.name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = staff.filter(s => s.name.toLowerCase().includes(search.toLowerCase())).sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <Layout>

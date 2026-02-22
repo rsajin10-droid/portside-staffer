@@ -13,6 +13,7 @@ export interface AttendanceRecord {
   staffName: string;
   mobile: string;
   status: 'present' | 'absent' | 'extra_duty' | 'dcd' | 'dcn';
+  subStatus?: 'dcd' | 'dcn'; // for absent with DCD/DCN
   vehicleNumber?: string;
   createdAt: string;
   createdBy: string;
@@ -35,6 +36,7 @@ export interface AppUser {
   username: string;
   password: string;
   displayName: string;
+  deactivated?: boolean;
 }
 
 const get = <T>(key: string): T[] => {
@@ -62,6 +64,10 @@ export const addUser = (u: Omit<AppUser, 'id'>): AppUser => {
 export const updateUserPassword = (id: string, password: string) => {
   const users = getUsers();
   set('skl_users', users.map(u => u.id === id ? { ...u, password } : u));
+};
+export const deactivateUser = (id: string) => {
+  const users = getUsers();
+  set('skl_users', users.map(u => u.id === id ? { ...u, deactivated: true } : u));
 };
 
 // Staff
