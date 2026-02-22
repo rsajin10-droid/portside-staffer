@@ -30,8 +30,12 @@ const statusLabels: Record<string, string> = {
   present: 'Present', absent: 'Absent', extra_duty: 'Extra Duty', dcd: 'DCD', dcn: 'DCN',
 };
 
-const getShareStatus = (status: string) => {
-  if (status === 'absent') return '(A)';
+const getShareStatus = (status: string, withDcdFlag?: boolean, withDcnFlag?: boolean) => {
+  if (status === 'absent') {
+    if (withDcdFlag) return '(A) DCD';
+    if (withDcnFlag) return '(A) DCN';
+    return '(A)';
+  }
   if (status === 'extra_duty') return '(ED)';
   if (status === 'dcd') return 'DCD';
   if (status === 'dcn') return 'DCN';
@@ -106,19 +110,26 @@ export default function Attendance() {
   const markAttendance = (status: AttendanceRecord['status']) => {
     if (!staff) return toast({ title: 'Select a driver', variant: 'destructive' });
     
-    // If DCD or DCN checked, save that status instead (combined with intent)
     let finalStatus = status;
-    if (withDCD) finalStatus = 'dcd';
-    if (withDCN) finalStatus = 'dcn';
+    let subStatus: 'dcd' | 'dcn' | undefined = undefined;
+
+    if (status === 'present') {
+      if (withDCD) finalStatus = 'dcd';
+      else if (withDCN) finalStatus = 'dcn';
+    } else if (status === 'absent') {
+      finalStatus = 'absent';
+      if (withDCD) subStatus = 'dcd';
+      else if (withDCN) subStatus = 'dcn';
+    }
 
     if (editId) {
-      updateAttendance(editId, { status: finalStatus });
+      updateAttendance(editId, { status: finalStatus, subStatus });
       setEditId(null);
       toast({ title: 'Updated' });
     } else {
-      const res = addAttendance({ date, shift: currentShift, staffId: staff.id, staffName: staff.name, mobile: staff.mobile, status: finalStatus, createdBy: user?.displayName || '' });
+      const res = addAttendance({ date, shift: currentShift, staffId: staff.id, staffName: staff.name, mobile: staff.mobile, status: finalStatus, subStatus, createdBy: user?.displayName || '' });
       if (!res) return toast({ title: 'Already marked for this shift', variant: 'destructive' });
-      toast({ title: `${staff.name} marked as ${statusLabels[finalStatus]}` });
+      toast({ title: `${staff.name} marked as ${statusLabels[finalStatus]}${subStatus ? ' + ' + subStatus.toUpperCase() : ''}` });
     }
     setSelectedStaff(''); setStaffSearch('');
     setWithDCD(false); setWithDCN(false);
@@ -135,7 +146,7 @@ export default function Attendance() {
     const finalList = [...others, ...extraDuty];
     let text = `*SKL - Attendance*\nDate: ${date} | Shift: ${currentShift.toUpperCase()}\nSupervisor: ${user?.displayName}\n\n`;
     finalList.forEach((r, i) => {
-      const st = getShareStatus(r.status);
+      const st = getShareStatus(r.status, r.subStatus === 'dcd', r.subStatus === 'dcn');
       text += `${i + 1}. ${r.staffName} - ${r.mobile}${st ? ' - ' + st : ''}\n`;
     });
     return text;
@@ -155,7 +166,7 @@ export default function Attendance() {
       startY: 30,
       head: [['#', 'Driver Name', 'Mobile', 'Status']],
       body: finalList.map((r, i) => {
-        const st = getShareStatus(r.status);
+        const st = getShareStatus(r.status, r.subStatus === 'dcd', r.subStatus === 'dcn');
         return [i + 1, r.staffName, r.mobile, st || 'Present'];
       }),
     });
@@ -347,7 +358,7 @@ export default function Attendance() {
                       <TableCell className="text-xs py-1.5">{i + 1}</TableCell>
                       <TableCell className="text-xs font-medium py-1.5">{r.staffName}</TableCell>
                       <TableCell className="text-xs py-1.5 hidden sm:table-cell">{r.mobile}</TableCell>
-                      <TableCell className="py-1.5"><Badge className={`${statusColors[r.status]} text-[10px] px-1.5`}>{statusLabels[r.status]}</Badge></TableCell>
+                      <TableCell className="py-1.5"><Badge className={`${statusColors[r.status]} text-[10px] px-1.5`}>{statusLabels[r.status]}{r.status === 'absent' && r.subStatus ? ` + ${r.subStatus.toUpperCase()}` : ''}</Badge></TableCell>
                       <TableCell className="flex gap-0.5 py-1.5">
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(r)}><Pencil className="h-3.5 w-3.5" /></Button>
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(r.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
