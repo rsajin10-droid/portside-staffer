@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Users, ClipboardCheck, Truck, FileText, Settings, LogOut
+  LayoutDashboard, Users, ClipboardCheck, Truck, FileText, BookOpen, Settings, LogOut
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,6 +17,7 @@ const items = [
   { title: 'Attendance', url: '/attendance', icon: ClipboardCheck },
   { title: 'Job Allotment', url: '/job-allotment', icon: Truck },
   { title: 'Reports', url: '/reports', icon: FileText },
+  { title: 'Driver Logbook', url: '/driver-logbook', icon: BookOpen },
   { title: 'Settings', url: '/settings', icon: Settings },
 ];
 
@@ -53,7 +54,7 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarContent>
         <div className="p-4 border-b border-sidebar-border flex items-center gap-3">
-          <img src={sklLogo} alt="SKL" className="h-10 w-10 object-contain rounded" />
+          <img src={sklLogo} alt="SKL" className="h-14 w-14 object-contain rounded" />
           <div>
             <h2 className="text-lg font-bold text-sidebar-primary">SKL</h2>
             <p className="text-xs text-sidebar-foreground/70">Staff Management System</p>
