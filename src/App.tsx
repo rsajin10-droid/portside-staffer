@@ -10,6 +10,7 @@ import StaffManagement from "./pages/StaffManagement";
 import Attendance from "./pages/Attendance";
 import JobAllotment from "./pages/JobAllotment";
 import Reports from "./pages/Reports";
+import DriverLogbook from "./pages/DriverLogbook";
 import SettingsPage from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import { useEffect } from "react";
@@ -51,6 +52,7 @@ const App = () => (
             <Route path="/attendance" element={<ProtectedRoute><Attendance /></ProtectedRoute>} />
             <Route path="/job-allotment" element={<ProtectedRoute><JobAllotment /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+            <Route path="/driver-logbook" element={<ProtectedRoute><DriverLogbook /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -118,7 +118,8 @@ export default function JobAllotment() {
   }, [vehicle]);
 
   const filteredVehicles = VEHICLES.filter(v => v.toLowerCase().includes(vehicleSearch.toLowerCase()));
-  const filteredStaff = attendanceDrivers.filter(s => s.name.toLowerCase().includes(staffSearch.toLowerCase()));
+  const assignedDriverIds = new Set(records.filter(r => r.id !== editId).map(r => r.staffId));
+  const filteredStaff = attendanceDrivers.filter(s => s.name.toLowerCase().includes(staffSearch.toLowerCase()) && !assignedDriverIds.has(s.id));
 
   const handleAdd = () => {
     if (!vehicle || !selectedStaff) return toast({ title: 'Select vehicle and driver', variant: 'destructive' });
