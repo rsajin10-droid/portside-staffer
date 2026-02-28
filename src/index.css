@@ -89,3 +89,22 @@
     @apply bg-background text-foreground;
   }
 }
+div[class*="lovable"], 
+button[class*="lovable"], 
+#lovable-badge,
+.lovable-badge {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+div[class*="lovable"], 
+button[class*="lovable"], 
+#lovable-badge,
+.lovable-badge {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
