@@ -33,8 +33,20 @@ function ThemeInit() {
   useEffect(() => {
     const saved = localStorage.getItem('skl_theme');
     if (saved === 'dark') document.documentElement.classList.add('dark');
+    // Apply color theme
+    const colorTheme = localStorage.getItem('skl_color_theme');
+    if (colorTheme && colorTheme !== 'default') {
+      document.documentElement.classList.add(`theme-${colorTheme}`);
+    }
   }, []);
   return null;
+}
+
+// Register service worker for offline support
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
 }
 
 const App = () => (
