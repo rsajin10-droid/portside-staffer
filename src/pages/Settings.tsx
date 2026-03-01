@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { updateUserPassword, getUsers, deactivateUser } from '@/lib/storage';
-import { Download, Upload, ShieldOff } from 'lucide-react';
+import { Download, Upload, ShieldOff, Pencil, Palette } from 'lucide-react';
 
 interface UserProfile {
   name: string;
@@ -26,6 +26,23 @@ const getProfile = (userId: string): UserProfile => {
 };
 const saveProfile = (userId: string, p: UserProfile) => localStorage.setItem(`skl_profile_${userId}`, JSON.stringify(p));
 
+const THEMES = [
+  { name: 'Maritime', key: 'default', colors: ['220 55% 18%', '185 55% 40%', '15 85% 55%'] },
+  { name: 'Ocean Blue', key: 'ocean', colors: ['210 100% 40%', '195 80% 50%', '45 100% 55%'] },
+  { name: 'Sunset', key: 'sunset', colors: ['340 80% 45%', '25 100% 55%', '50 100% 50%'] },
+  { name: 'Forest', key: 'forest', colors: ['150 60% 25%', '120 50% 45%', '40 80% 55%'] },
+  { name: 'Royal Purple', key: 'purple', colors: ['270 70% 40%', '290 60% 55%', '330 80% 60%'] },
+  { name: 'Crimson', key: 'crimson', colors: ['0 75% 40%', '15 90% 55%', '45 95% 50%'] },
+];
+
+const applyTheme = (key: string) => {
+  const root = document.documentElement;
+  localStorage.setItem('skl_color_theme', key);
+  // Remove all theme classes first
+  THEMES.forEach(t => root.classList.remove(`theme-${t.key}`));
+  if (key !== 'default') root.classList.add(`theme-${key}`);
+};
+
 export default function SettingsPage() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -35,15 +52,20 @@ export default function SettingsPage() {
   const [confirmPw, setConfirmPw] = useState('');
   const [isDark, setIsDark] = useState(false);
   const [email, setEmail] = useState('');
+  const [editProfile, setEditProfile] = useState(false);
+  const [editPassword, setEditPassword] = useState(false);
+  const [activeTheme, setActiveTheme] = useState('default');
 
   // Profile
   const [profile, setProfile] = useState<UserProfile>({ name: '', email: '', phone: '', address: '', dob: '', profileImage: '' });
 
   useEffect(() => {
     setIsDark(document.documentElement.classList.contains('dark'));
+    setActiveTheme(localStorage.getItem('skl_color_theme') || 'default');
     if (user) {
       const p = getProfile(user.id);
       setProfile({ name: p.name || user.displayName, email: p.email || '', phone: p.phone || '', address: p.address || '', dob: p.dob || '', profileImage: p.profileImage || '' });
+      setEmail(localStorage.getItem('skl_backup_email') || '');
     }
   }, [user]);
 
@@ -63,6 +85,7 @@ export default function SettingsPage() {
     if (newPw !== confirmPw) return toast({ title: 'Passwords do not match', variant: 'destructive' });
     updateUserPassword(user.id, newPw);
     setOldPw(''); setNewPw(''); setConfirmPw('');
+    setEditPassword(false);
     toast({ title: 'Password changed' });
   };
 
@@ -74,7 +97,17 @@ export default function SettingsPage() {
   const handleSaveProfile = () => {
     if (!user) return;
     saveProfile(user.id, profile);
-    toast({ title: 'Profile saved' });
+    // Update session displayName
+    const session = localStorage.getItem('skl_session');
+    if (session) {
+      try {
+        const s = JSON.parse(session);
+        s.user.displayName = profile.name;
+        localStorage.setItem('skl_session', JSON.stringify(s));
+      } catch {}
+    }
+    setEditProfile(false);
+    toast({ title: 'Profile saved. Refresh to see name changes.' });
   };
 
   const handleProfileImage = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -87,10 +120,9 @@ export default function SettingsPage() {
 
   // Data Recovery
   const exportData = () => {
-    const keys = ['skl_users', 'skl_staff', 'skl_attendance', 'skl_jobs', 'skl_backup_email', 'skl_theme'];
+    const keys = ['skl_users', 'skl_staff', 'skl_attendance', 'skl_jobs', 'skl_backup_email', 'skl_theme', 'skl_logbook', 'skl_todos', 'skl_color_theme'];
     const data: Record<string, string | null> = {};
     keys.forEach(k => { data[k] = localStorage.getItem(k); });
-    // Also export profiles
     Object.keys(localStorage).filter(k => k.startsWith('skl_profile_')).forEach(k => { data[k] = localStorage.getItem(k); });
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -123,65 +155,119 @@ export default function SettingsPage() {
       <div className="space-y-6 max-w-2xl mx-auto">
         <h2 className="text-2xl font-bold">Settings</h2>
 
-        <Tabs defaultValue="profile">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="profile">Profile</TabsTrigger>
-            <TabsTrigger value="password">Password</TabsTrigger>
+        <Tabs defaultValue="theme">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="theme">Theme</TabsTrigger>
+            <TabsTrigger value="account">Account</TabsTrigger>
             <TabsTrigger value="data">Data</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="profile">
-            <Card>
-              <CardHeader><CardTitle>Profile</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-4">
-                  {profile.profileImage ? (
-                    <img src={profile.profileImage} alt="Profile" className="w-20 h-20 rounded-full object-cover border-2 border-primary" />
-                  ) : (
-                    <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center text-2xl font-bold text-muted-foreground">
-                      {(profile.name || '?')[0]?.toUpperCase()}
-                    </div>
-                  )}
-                  <div>
-                    <Label className="cursor-pointer text-primary hover:underline">
-                      Change Photo
-                      <input type="file" accept="image/*" className="hidden" onChange={handleProfileImage} />
-                    </Label>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>Name</Label><Input value={profile.name} onChange={e => setProfile(p => ({ ...p, name: e.target.value }))} /></div>
-                  <div className="space-y-2"><Label>Email</Label><Input type="email" value={profile.email} onChange={e => setProfile(p => ({ ...p, email: e.target.value }))} /></div>
-                  <div className="space-y-2"><Label>Phone</Label><Input value={profile.phone} onChange={e => setProfile(p => ({ ...p, phone: e.target.value }))} /></div>
-                  <div className="space-y-2"><Label>Date of Birth</Label><Input type="date" value={profile.dob} onChange={e => setProfile(p => ({ ...p, dob: e.target.value }))} /></div>
-                </div>
-                <div className="space-y-2"><Label>Address</Label><Input value={profile.address} onChange={e => setProfile(p => ({ ...p, address: e.target.value }))} /></div>
-                <Button onClick={handleSaveProfile}>Save Profile</Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="password">
-            <Card>
-              <CardHeader><CardTitle>Change Password</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2"><Label>Current Password</Label><Input type="password" value={oldPw} onChange={e => setOldPw(e.target.value)} /></div>
-                <div className="space-y-2"><Label>New Password</Label><Input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} /></div>
-                <div className="space-y-2"><Label>Confirm New Password</Label><Input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} /></div>
-                <Button onClick={handleChangePassword}>Update Password</Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
           <TabsContent value="theme">
-            <Card>
-              <CardHeader><CardTitle>Theme</CardTitle></CardHeader>
-              <CardContent className="flex items-center justify-between">
-                <Label>Dark Mode</Label>
-                <Switch checked={isDark} onCheckedChange={toggleTheme} />
-              </CardContent>
-            </Card>
+            <div className="space-y-4">
+              <Card>
+                <CardHeader><CardTitle className="flex items-center gap-2"><Palette className="h-5 w-5" />Dark / Light</CardTitle></CardHeader>
+                <CardContent className="flex items-center justify-between">
+                  <Label>Dark Mode</Label>
+                  <Switch checked={isDark} onCheckedChange={toggleTheme} />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle>Color Themes</CardTitle></CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {THEMES.map(theme => (
+                      <button
+                        key={theme.key}
+                        onClick={() => { applyTheme(theme.key); setActiveTheme(theme.key); }}
+                        className={`rounded-xl p-3 border-2 transition-all text-left space-y-2 ${activeTheme === theme.key ? 'border-primary shadow-lg scale-105' : 'border-border hover:border-primary/50'}`}
+                      >
+                        <div className="flex gap-1.5">
+                          {theme.colors.map((c, i) => (
+                            <div key={i} className="w-6 h-6 rounded-full shadow-inner" style={{ backgroundColor: `hsl(${c})` }} />
+                          ))}
+                        </div>
+                        <p className="text-xs font-semibold">{theme.name}</p>
+                      </button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="account">
+            <div className="space-y-4">
+              {/* Profile - collapsed by default */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Profile</CardTitle>
+                  <Button size="sm" variant="ghost" onClick={() => setEditProfile(!editProfile)}>
+                    <Pencil className="h-4 w-4 mr-1" />{editProfile ? 'Cancel' : 'Edit'}
+                  </Button>
+                </CardHeader>
+                {!editProfile ? (
+                  <CardContent className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      {profile.profileImage ? (
+                        <img src={profile.profileImage} alt="Profile" className="w-14 h-14 rounded-full object-cover border-2 border-primary" />
+                      ) : (
+                        <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center text-xl font-bold text-muted-foreground">
+                          {(profile.name || '?')[0]?.toUpperCase()}
+                        </div>
+                      )}
+                      <div>
+                        <p className="font-semibold">{profile.name || 'Not set'}</p>
+                        <p className="text-xs text-muted-foreground">{profile.email || 'No email'}</p>
+                        <p className="text-xs text-muted-foreground">{profile.phone || 'No phone'}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                ) : (
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center gap-4">
+                      {profile.profileImage ? (
+                        <img src={profile.profileImage} alt="Profile" className="w-20 h-20 rounded-full object-cover border-2 border-primary" />
+                      ) : (
+                        <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center text-2xl font-bold text-muted-foreground">
+                          {(profile.name || '?')[0]?.toUpperCase()}
+                        </div>
+                      )}
+                      <Label className="cursor-pointer text-primary hover:underline">
+                        Change Photo
+                        <input type="file" accept="image/*" className="hidden" onChange={handleProfileImage} />
+                      </Label>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2"><Label>Name (Supervisor Name)</Label><Input value={profile.name} onChange={e => setProfile(p => ({ ...p, name: e.target.value }))} /></div>
+                      <div className="space-y-2"><Label>Email</Label><Input type="email" value={profile.email} onChange={e => setProfile(p => ({ ...p, email: e.target.value }))} /></div>
+                      <div className="space-y-2"><Label>Phone</Label><Input value={profile.phone} onChange={e => setProfile(p => ({ ...p, phone: e.target.value }))} /></div>
+                      <div className="space-y-2"><Label>Date of Birth</Label><Input type="date" value={profile.dob} onChange={e => setProfile(p => ({ ...p, dob: e.target.value }))} /></div>
+                    </div>
+                    <div className="space-y-2"><Label>Address</Label><Input value={profile.address} onChange={e => setProfile(p => ({ ...p, address: e.target.value }))} /></div>
+                    <Button onClick={handleSaveProfile}>Save Profile</Button>
+                  </CardContent>
+                )}
+              </Card>
+
+              {/* Password - collapsed by default */}
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Password</CardTitle>
+                  <Button size="sm" variant="ghost" onClick={() => setEditPassword(!editPassword)}>
+                    <Pencil className="h-4 w-4 mr-1" />{editPassword ? 'Cancel' : 'Change'}
+                  </Button>
+                </CardHeader>
+                {editPassword && (
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2"><Label>Current Password</Label><Input type="password" value={oldPw} onChange={e => setOldPw(e.target.value)} /></div>
+                    <div className="space-y-2"><Label>New Password</Label><Input type="password" value={newPw} onChange={e => setNewPw(e.target.value)} /></div>
+                    <div className="space-y-2"><Label>Confirm New Password</Label><Input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)} /></div>
+                    <Button onClick={handleChangePassword}>Update Password</Button>
+                  </CardContent>
+                )}
+              </Card>
+            </div>
           </TabsContent>
 
           <TabsContent value="data">
@@ -190,10 +276,10 @@ export default function SettingsPage() {
                 <CardHeader><CardTitle>Data Backup</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Email for backup</Label>
+                    <Label>Email for daily backup (12 AM)</Label>
                     <Input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" />
                   </div>
-                  <p className="text-xs text-muted-foreground">Auto backup daily at 12 AM (requires backend setup)</p>
+                  <p className="text-xs text-muted-foreground">Automatic backup requires backend setup. Use export/import for manual backup.</p>
                   <Button onClick={handleSaveEmail} variant="outline">Save Email</Button>
                 </CardContent>
               </Card>
@@ -201,8 +287,8 @@ export default function SettingsPage() {
               <Card>
                 <CardHeader><CardTitle>Data Recovery</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
-                  <p className="text-sm text-muted-foreground">Export all data as a backup file or import from a previous backup when using a new device.</p>
-                  <div className="flex gap-3">
+                  <p className="text-sm text-muted-foreground">Export all data as a backup file or import from a previous backup when using a new device or reinstalling the application.</p>
+                  <div className="flex gap-3 flex-wrap">
                     <Button onClick={exportData} variant="outline"><Download className="h-4 w-4 mr-2" />Export Data</Button>
                     <Label className="cursor-pointer">
                       <Button variant="outline" asChild><span><Upload className="h-4 w-4 mr-2" />Import Data</span></Button>
@@ -211,24 +297,24 @@ export default function SettingsPage() {
                   </div>
                 </CardContent>
               </Card>
+
+              <Card className="border-destructive/50">
+                <CardHeader><CardTitle className="text-destructive flex items-center gap-2"><ShieldOff className="h-5 w-5" />Deactivate Account</CardTitle></CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm text-muted-foreground">Deactivating your account will prevent login. This action cannot be undone by yourself.</p>
+                  <Button variant="destructive" onClick={() => {
+                    if (!user) return;
+                    if (window.confirm('Are you sure you want to deactivate your account? You will be logged out immediately.')) {
+                      deactivateUser(user.id);
+                      logout();
+                      navigate('/');
+                    }
+                  }}>Deactivate My Account</Button>
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
         </Tabs>
-
-        <Card className="border-destructive/50">
-          <CardHeader><CardTitle className="text-destructive flex items-center gap-2"><ShieldOff className="h-5 w-5" />Deactivate Account</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-muted-foreground">Deactivating your account will prevent login. This action cannot be undone by yourself.</p>
-            <Button variant="destructive" onClick={() => {
-              if (!user) return;
-              if (window.confirm('Are you sure you want to deactivate your account? You will be logged out immediately.')) {
-                deactivateUser(user.id);
-                logout();
-                navigate('/');
-              }
-            }}>Deactivate My Account</Button>
-          </CardContent>
-        </Card>
 
         <Card>
           <CardContent className="p-6 text-center space-y-2">

@@ -15,7 +15,7 @@ import {
   getStaffList, getShiftAttendance, addAttendance, updateAttendance, deleteAttendance,
   getAttendance, type AttendanceRecord, type Staff
 } from '@/lib/storage';
-import { Pencil, Trash2, Download, MessageCircle } from 'lucide-react';
+import { Pencil, Trash2, Download, MessageCircle, Maximize2, Minimize2 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -27,7 +27,7 @@ const statusColors: Record<string, string> = {
   dcn: 'bg-secondary text-secondary-foreground',
 };
 const statusLabels: Record<string, string> = {
-  present: 'Present', absent: 'Absent', extra_duty: 'Extra Duty', dcd: 'DCD', dcn: 'DCN',
+  present: 'Present', absent: 'Absent', extra_duty: 'OT', dcd: 'DCD', dcn: 'DCN',
 };
 
 const getShareStatus = (status: string, withDcdFlag?: boolean, withDcnFlag?: boolean) => {
@@ -36,7 +36,7 @@ const getShareStatus = (status: string, withDcdFlag?: boolean, withDcnFlag?: boo
     if (withDcnFlag) return '(A) DCN';
     return '(A)';
   }
-  if (status === 'extra_duty') return '(ED)';
+  if (status === 'extra_duty') return '(OT)';
   if (status === 'dcd') return 'DCD';
   if (status === 'dcn') return 'DCN';
   return '';
@@ -57,6 +57,7 @@ export default function Attendance() {
   const [filterDriver, setFilterDriver] = useState('');
   const [withDCD, setWithDCD] = useState(false);
   const [withDCN, setWithDCN] = useState(false);
+  const [fullPage, setFullPage] = useState(false);
 
   // Repeat last shift state
   const [showRepeat, setShowRepeat] = useState(false);
@@ -141,9 +142,9 @@ export default function Attendance() {
 
   const buildShareText = () => {
     const sorted = [...filteredRecords];
-    const extraDuty = sorted.filter(r => r.status === 'extra_duty');
+    const ot = sorted.filter(r => r.status === 'extra_duty');
     const others = sorted.filter(r => r.status !== 'extra_duty');
-    const finalList = [...others, ...extraDuty];
+    const finalList = [...others, ...ot];
     let text = `*SKL - Attendance*\nDate: ${date} | Shift: ${currentShift.toUpperCase()}\nSupervisor: ${user?.displayName}\n\n`;
     finalList.forEach((r, i) => {
       const st = getShareStatus(r.status, r.subStatus === 'dcd', r.subStatus === 'dcn');
@@ -159,9 +160,9 @@ export default function Attendance() {
     doc.setFontSize(10);
     doc.text(`Date: ${date} | Shift: ${currentShift.toUpperCase()} | Supervisor: ${user?.displayName}`, 14, 24);
     const sorted = [...filteredRecords];
-    const extraDuty = sorted.filter(r => r.status === 'extra_duty');
+    const ot = sorted.filter(r => r.status === 'extra_duty');
     const others = sorted.filter(r => r.status !== 'extra_duty');
-    const finalList = [...others, ...extraDuty];
+    const finalList = [...others, ...ot];
     autoTable(doc, {
       startY: 30,
       head: [['#', 'Driver Name', 'Mobile', 'Status']],
@@ -177,6 +178,55 @@ export default function Attendance() {
     const text = buildShareText();
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
+
+  // Full page mode - show only the list
+  if (fullPage) {
+    return (
+      <Layout>
+        <div className="space-y-2 max-w-4xl mx-auto px-1">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <h2 className="text-lg font-bold">Attendance - {date} ({currentShift.toUpperCase()}) — {filteredRecords.length} records</h2>
+            <div className="flex gap-1.5 flex-wrap">
+              <Input placeholder="Filter..." value={filterDriver} onChange={e => setFilterDriver(e.target.value)} className="w-32 h-8 text-xs" />
+              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={shareAsPdf}><Download className="h-3.5 w-3.5 mr-1" />PDF</Button>
+              <Button size="sm" variant="outline" className="h-8 text-xs text-success" onClick={shareWhatsApp}><MessageCircle className="h-3.5 w-3.5 mr-1" />WA</Button>
+              <Button size="sm" variant="ghost" className="h-8" onClick={() => setFullPage(false)}><Minimize2 className="h-4 w-4" /></Button>
+            </div>
+          </div>
+          <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 120px)' }}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs w-8">#</TableHead>
+                  <TableHead className="text-xs">Driver</TableHead>
+                  <TableHead className="text-xs">Mobile</TableHead>
+                  <TableHead className="text-xs">Status</TableHead>
+                  <TableHead className="text-xs w-16"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredRecords.map((r, i) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="text-xs py-1.5">{i + 1}</TableCell>
+                    <TableCell className="text-xs font-medium py-1.5">{r.staffName}</TableCell>
+                    <TableCell className="text-xs py-1.5">{r.mobile}</TableCell>
+                    <TableCell className="py-1.5"><Badge className={`${statusColors[r.status]} text-[10px] px-1.5`}>{statusLabels[r.status]}{r.status === 'absent' && r.subStatus ? ` + ${r.subStatus.toUpperCase()}` : ''}</Badge></TableCell>
+                    <TableCell className="flex gap-0.5 py-1.5">
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { handleEdit(r); setFullPage(false); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(r.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {filteredRecords.length === 0 && (
+                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground text-xs">No records</TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -242,7 +292,7 @@ export default function Attendance() {
                             <SelectContent>
                               <SelectItem value="present">Present</SelectItem>
                               <SelectItem value="absent">Absent</SelectItem>
-                              <SelectItem value="extra_duty">Extra Duty</SelectItem>
+                              <SelectItem value="extra_duty">OT</SelectItem>
                               <SelectItem value="dcd">DCD</SelectItem>
                               <SelectItem value="dcn">DCN</SelectItem>
                             </SelectContent>
@@ -325,9 +375,9 @@ export default function Attendance() {
             <div className="flex flex-wrap gap-2">
               <Button size="sm" onClick={() => markAttendance('present')} className="bg-success hover:bg-success/90 text-success-foreground">Present{withDCD ? ' + DCD' : withDCN ? ' + DCN' : ''}</Button>
               <Button size="sm" onClick={() => markAttendance('absent')} variant="destructive">Absent{withDCD ? ' + DCD' : withDCN ? ' + DCN' : ''}</Button>
-              <Button size="sm" onClick={() => markAttendance('extra_duty')} className="bg-warning hover:bg-warning/90 text-warning-foreground">Extra Duty</Button>
+              <Button size="sm" onClick={() => markAttendance('extra_duty')} className="bg-warning hover:bg-warning/90 text-warning-foreground">Overtime (OT)</Button>
             </div>
-            <p className="text-[10px] text-muted-foreground">DCD = Duty Change Day | DCN = Duty Change Night</p>
+            <p className="text-[10px] text-muted-foreground">DCD = Duty Change Day | DCN = Duty Change Night | OT = Overtime</p>
           </CardContent>
         </Card>
 
@@ -336,6 +386,7 @@ export default function Attendance() {
             <CardTitle className="text-base">List ({filteredRecords.length})</CardTitle>
             <div className="flex gap-1.5 flex-wrap">
               <Input placeholder="Filter..." value={filterDriver} onChange={e => setFilterDriver(e.target.value)} className="w-32 h-8 text-xs" />
+              <Button size="sm" variant="ghost" className="h-8" onClick={() => setFullPage(true)}><Maximize2 className="h-4 w-4" /></Button>
               <Button size="sm" variant="outline" className="h-8 text-xs" onClick={shareAsPdf}><Download className="h-3.5 w-3.5 mr-1" />PDF</Button>
               <Button size="sm" variant="outline" className="h-8 text-xs text-success" onClick={shareWhatsApp}><MessageCircle className="h-3.5 w-3.5 mr-1" />WA</Button>
             </div>

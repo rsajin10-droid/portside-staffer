@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Sun, Moon, Ship, UserPlus } from 'lucide-react';
+import { Ship, UserPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { addUser } from '@/lib/storage';
 import sklLogo from '@/assets/skl-logo.png';
@@ -15,12 +15,10 @@ const SPECIAL_CODE = 'SKLD1097';
 export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [shift, setShift] = useState<'day' | 'night'>('day');
   const [rememberMe, setRememberMe] = useState(false);
   const [isRegister, setIsRegister] = useState(false);
   const [regUsername, setRegUsername] = useState('');
   const [regPassword, setRegPassword] = useState('');
-  const [regDisplayName, setRegDisplayName] = useState('');
   const [regCode, setRegCode] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -41,7 +39,7 @@ export default function Login() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (login(username, password, shift)) {
+    if (login(username, password, 'day')) {
       if (rememberMe) {
         localStorage.setItem('skl_remember', JSON.stringify({ username, password }));
       } else {
@@ -55,17 +53,17 @@ export default function Login() {
 
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!regUsername.trim() || !regPassword.trim() || !regDisplayName.trim()) {
+    if (!regUsername.trim() || !regPassword.trim()) {
       return toast({ title: 'Fill all fields', variant: 'destructive' });
     }
     if (regCode !== SPECIAL_CODE) {
       return toast({ title: 'Invalid special code', description: 'Contact admin for the registration code', variant: 'destructive' });
     }
-    addUser({ username: regUsername.trim(), password: regPassword.trim(), displayName: regDisplayName.trim() });
-    toast({ title: 'User registered successfully!' });
+    addUser({ username: regUsername.trim(), password: regPassword.trim(), displayName: regUsername.trim() });
+    toast({ title: 'User registered! Set your name in Settings > Profile.' });
     setIsRegister(false);
     setUsername(regUsername);
-    setRegUsername(''); setRegPassword(''); setRegDisplayName(''); setRegCode('');
+    setRegUsername(''); setRegPassword(''); setRegCode('');
   };
 
   return (
@@ -82,17 +80,6 @@ export default function Login() {
         <CardContent>
           {!isRegister ? (
             <form onSubmit={handleLogin} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Shift</Label>
-                <div className="flex gap-2">
-                  <Button type="button" variant={shift === 'day' ? 'default' : 'outline'} className="flex-1" onClick={() => setShift('day')}>
-                    <Sun className="h-4 w-4 mr-2" /> Day
-                  </Button>
-                  <Button type="button" variant={shift === 'night' ? 'default' : 'outline'} className="flex-1" onClick={() => setShift('night')}>
-                    <Moon className="h-4 w-4 mr-2" /> Night
-                  </Button>
-                </div>
-              </div>
               <div className="space-y-2">
                 <Label htmlFor="username">Username</Label>
                 <Input id="username" value={username} onChange={e => setUsername(e.target.value)} required />
@@ -112,10 +99,6 @@ export default function Login() {
             </form>
           ) : (
             <form onSubmit={handleRegister} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Supervisor / Display Name</Label>
-                <Input value={regDisplayName} onChange={e => setRegDisplayName(e.target.value)} placeholder="e.g. Sajin Raj" required />
-              </div>
               <div className="space-y-2">
                 <Label>Username</Label>
                 <Input value={regUsername} onChange={e => setRegUsername(e.target.value)} placeholder="Login username" required />
