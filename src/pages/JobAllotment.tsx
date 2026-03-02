@@ -14,7 +14,7 @@ import {
   deleteJobAllotment, getLastDriver, getShiftAttendance, type JobAllotmentRecord, type Staff
 } from '@/lib/storage';
 import { Plus, Pencil, Trash2, Download, MessageCircle, Maximize2, Minimize2 } from 'lucide-react';
-import { Switch } from '@/components/ui/switch';
+
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -352,10 +352,9 @@ export default function JobAllotment() {
           <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2 pb-3">
             <CardTitle className="text-base">List ({records.length})</CardTitle>
             <div className="flex gap-1.5 items-center">
-              <div className="flex items-center gap-1">
-                <Switch checked={fullScreen} onCheckedChange={setFullScreen} className="scale-75" />
-                {fullScreen ? <Minimize2 className="h-3.5 w-3.5 text-muted-foreground" /> : <Maximize2 className="h-3.5 w-3.5 text-muted-foreground" />}
-              </div>
+              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setFullScreen(!fullScreen)}>
+                {fullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              </Button>
               <Button size="sm" variant="outline" className="h-8 text-xs" onClick={shareAsPdf}><Download className="h-3.5 w-3.5 mr-1" />PDF</Button>
               <Button size="sm" variant="outline" className="h-8 text-xs text-success" onClick={shareWhatsApp}><MessageCircle className="h-3.5 w-3.5 mr-1" />WA</Button>
             </div>
