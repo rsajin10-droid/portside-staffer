@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo } from 'react';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,6 @@ import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { getAttendance, getStaffList, getJobAllotments, type AttendanceRecord } from '@/lib/storage';
 import { Download, Eye, Image } from 'lucide-react';
-import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -42,7 +41,6 @@ export default function Reports() {
 
   // Show report in app
   const [showReport, setShowReport] = useState(false);
-  const calendarRef = useRef<HTMLDivElement>(null);
 
   const staffList = getStaffList().sort((a, b) => a.name.localeCompare(b.name));
   const allAttendance = getAttendance();
@@ -162,17 +160,81 @@ export default function Reports() {
     doc.save(`driver_${staff?.name}_${MONTHS[month]}_${year}.pdf`);
   };
 
-  const downloadCalendarJpg = async () => {
-    if (!calendarRef.current || !selectedDriver) return;
-    const canvas = await html2canvas(calendarRef.current, {
-      backgroundColor: '#ffffff',
-      scale: 2,
-      width: 600,
-      windowWidth: 600,
-    });
-    const link = document.createElement('a');
+  const downloadCalendarJpg = () => {
+    if (!selectedDriver) return;
     const staff = staffList.find(s => s.id === selectedDriver);
-    link.download = `${staff?.name}_${MONTHS[month]}_${year}.jpg`;
+    const driverName = staff?.name || 'Driver';
+    const title = `${driverName} - ${MONTHS[month]} ${year}`;
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDay = new Date(year, month, 1).getDay();
+    const totalRows = Math.ceil((firstDay + daysInMonth) / 7);
+
+    const W = 600, pad = 20, headerH = 50, dayHeaderH = 30, cellH = 55, footerH = 40;
+    const cellW = (W - pad * 2) / 7;
+    const H = pad + headerH + dayHeaderH + totalRows * cellH + footerH + pad;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W * 2; canvas.height = H * 2;
+    const ctx = canvas.getContext('2d')!;
+    ctx.scale(2, 2);
+
+    // Background
+    ctx.fillStyle = '#f8fafc'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#ffffff';
+    const r = 12;
+    ctx.beginPath(); ctx.moveTo(pad + r, pad); ctx.lineTo(W - pad - r, pad); ctx.quadraticCurveTo(W - pad, pad, W - pad, pad + r);
+    ctx.lineTo(W - pad, H - pad - r); ctx.quadraticCurveTo(W - pad, H - pad, W - pad - r, H - pad);
+    ctx.lineTo(pad + r, H - pad); ctx.quadraticCurveTo(pad, H - pad, pad, H - pad - r);
+    ctx.lineTo(pad, pad + r); ctx.quadraticCurveTo(pad, pad, pad + r, pad); ctx.fill();
+
+    // Title
+    ctx.fillStyle = '#1e293b'; ctx.font = 'bold 20px sans-serif';
+    ctx.fillText(title, pad + 16, pad + 32);
+
+    // Day headers
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const gridTop = pad + headerH;
+    ctx.font = 'bold 12px sans-serif'; ctx.fillStyle = '#64748b'; ctx.textAlign = 'center';
+    days.forEach((d, i) => ctx.fillText(d, pad + i * cellW + cellW / 2, gridTop + 18));
+
+    // Calendar cells
+    const cellTop = gridTop + dayHeaderH;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const idx = firstDay + d - 1;
+      const col = idx % 7, row = Math.floor(idx / 7);
+      const x = pad + col * cellW + 4, y = cellTop + row * cellH + 2;
+      const cw = cellW - 8, ch = cellH - 4;
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const dayRecs = monthDriverData.filter(rc => rc.date === dateStr);
+      const status = dayRecs.length > 0 ? dayRecs.map(rc => rc.statusLabel).join('/') : 'WO';
+
+      let bg = '#f1f5f9', fg = '#94a3b8';
+      if (status.includes('P')) { bg = '#dcfce7'; fg = '#16a34a'; }
+      else if (status.includes('A')) { bg = '#fee2e2'; fg = '#dc2626'; }
+      else if (status.includes('OT')) { bg = '#fef3c7'; fg = '#d97706'; }
+
+      ctx.fillStyle = bg;
+      ctx.beginPath(); ctx.roundRect(x, y, cw, ch, 8); ctx.fill();
+      ctx.fillStyle = fg; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(String(d), x + cw / 2, y + 22);
+      ctx.font = 'bold 10px sans-serif';
+      ctx.fillText(status, x + cw / 2, y + 38);
+    }
+
+    // Footer stats
+    const stats = monthDriverStats;
+    if (stats) {
+      const fy = cellTop + totalRows * cellH + 12;
+      ctx.textAlign = 'left'; ctx.font = 'bold 13px sans-serif';
+      ctx.fillStyle = '#16a34a'; ctx.fillText(`P: ${stats.present}`, pad + 16, fy);
+      ctx.fillStyle = '#dc2626'; ctx.fillText(`A: ${stats.absent}`, pad + 80, fy);
+      ctx.fillStyle = '#d97706'; ctx.fillText(`OT: ${stats.ot}`, pad + 140, fy);
+      ctx.fillStyle = '#1e293b'; ctx.font = 'bold 14px sans-serif';
+      ctx.fillText(`Total Duty: ${stats.totalDuty}`, pad + 210, fy);
+    }
+
+    const link = document.createElement('a');
+    link.download = `${driverName}_${MONTHS[month]}_${year}.jpg`;
     link.href = canvas.toDataURL('image/jpeg', 0.95);
     link.click();
   };
@@ -308,7 +370,7 @@ export default function Reports() {
               <div className="flex gap-2 flex-wrap">
                 <Button size="sm" onClick={() => setShowReport(true)} disabled={!selectedDriver}><Eye className="h-4 w-4 mr-1" />View Report</Button>
                 <Button size="sm" variant="outline" onClick={downloadMonthDriverPdf} disabled={!selectedDriver}><Download className="h-4 w-4 mr-1" />PDF (Calendar)</Button>
-                <Button size="sm" variant="outline" onClick={downloadCalendarJpg} disabled={!selectedDriver || !showReport}><Image className="h-4 w-4 mr-1" />JPG</Button>
+                <Button size="sm" variant="outline" onClick={downloadCalendarJpg} disabled={!selectedDriver}><Image className="h-4 w-4 mr-1" />JPG</Button>
               </div>
             </CardContent>
           </Card>
@@ -377,7 +439,7 @@ export default function Reports() {
         )}
 
         {showReport && mode === 'month_driver' && selectedDriver && (
-          <div ref={calendarRef}>
+          <div>
             <Card className="bg-card">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg font-semibold">{driverSearch} - {MONTHS[month]} {year}</CardTitle>
