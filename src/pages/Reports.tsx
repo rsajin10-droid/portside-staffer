@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { getAttendance, getStaffList, getJobAllotments, type AttendanceRecord } from '@/lib/storage';
-import { Download, Eye, Image } from 'lucide-react';
+import { Download, Eye, MessageCircle } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -233,10 +233,20 @@ export default function Reports() {
       ctx.fillText(`Total Duty: ${stats.totalDuty}`, pad + 430, fy);
     }
 
-    const link = document.createElement('a');
-    link.download = `${driverName}_${MONTHS[month]}_${year}.jpg`;
-    link.href = canvas.toDataURL('image/jpeg', 0.95);
-    link.click();
+    canvas.toBlob(async (blob) => {
+      if (!blob) return;
+      const file = new File([blob], `${driverName}_${MONTHS[month]}_${year}.jpg`, { type: 'image/jpeg' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: title });
+      } else {
+        // Fallback: download the file
+        const link = document.createElement('a');
+        link.download = file.name;
+        link.href = URL.createObjectURL(blob);
+        link.click();
+        URL.revokeObjectURL(link.href);
+      }
+    }, 'image/jpeg', 0.95);
   };
 
   const downloadAllDriversExcel = () => {
@@ -369,8 +379,7 @@ export default function Reports() {
               )}
               <div className="flex gap-2 flex-wrap">
                 <Button size="sm" onClick={() => setShowReport(true)} disabled={!selectedDriver}><Eye className="h-4 w-4 mr-1" />View Report</Button>
-                <Button size="sm" variant="outline" onClick={downloadMonthDriverPdf} disabled={!selectedDriver}><Download className="h-4 w-4 mr-1" />PDF (Calendar)</Button>
-                <Button size="sm" variant="outline" onClick={downloadCalendarJpg} disabled={!selectedDriver}><Image className="h-4 w-4 mr-1" />JPG</Button>
+                <Button size="sm" variant="outline" className="text-success" onClick={downloadCalendarJpg} disabled={!selectedDriver}><MessageCircle className="h-4 w-4 mr-1" />WA (JPG)</Button>
               </div>
             </CardContent>
           </Card>
