@@ -224,13 +224,13 @@ export default function Reports() {
     // Footer stats
     const stats = monthDriverStats;
     if (stats) {
-      const fy = cellTop + totalRows * cellH + 12;
+      const fy = cellTop + totalRows * cellH + 16;
       ctx.textAlign = 'left'; ctx.font = 'bold 13px sans-serif';
-      ctx.fillStyle = '#16a34a'; ctx.fillText(`P: ${stats.present}`, pad + 16, fy);
-      ctx.fillStyle = '#dc2626'; ctx.fillText(`A: ${stats.absent}`, pad + 80, fy);
-      ctx.fillStyle = '#d97706'; ctx.fillText(`OT: ${stats.ot}`, pad + 140, fy);
+      ctx.fillStyle = '#16a34a'; ctx.fillText(`Total Present: ${stats.present}`, pad + 16, fy);
+      ctx.fillStyle = '#dc2626'; ctx.fillText(`Total Absent: ${stats.absent}`, pad + 170, fy);
+      ctx.fillStyle = '#d97706'; ctx.fillText(`Total OT: ${stats.ot}`, pad + 320, fy);
       ctx.fillStyle = '#1e293b'; ctx.font = 'bold 14px sans-serif';
-      ctx.fillText(`Total Duty: ${stats.totalDuty}`, pad + 210, fy);
+      ctx.fillText(`Total Duty: ${stats.totalDuty}`, pad + 430, fy);
     }
 
     const link = document.createElement('a');

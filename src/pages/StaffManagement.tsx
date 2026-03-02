@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useToast } from '@/hooks/use-toast';
 import { getStaffList, addStaff, updateStaff, deleteStaff, importStaffBulk, type Staff } from '@/lib/storage';
 import { Plus, Pencil, Trash2, Upload, List, Maximize2, Minimize2 } from 'lucide-react';
-import { Switch } from '@/components/ui/switch';
+
 import * as XLSX from 'xlsx';
 
 export default function StaffManagement() {
@@ -118,10 +118,9 @@ export default function StaffManagement() {
             <CardContent className="p-4 space-y-3">
               <div className="flex items-center gap-2">
                 <Input placeholder="Search staff..." value={search} onChange={e => setSearch(e.target.value)} className="flex-1" />
-                <div className="flex items-center gap-1">
-                  <Switch checked={fullScreen} onCheckedChange={setFullScreen} className="scale-75" />
-                  {fullScreen ? <Minimize2 className="h-4 w-4 text-muted-foreground" /> : <Maximize2 className="h-4 w-4 text-muted-foreground" />}
-                </div>
+                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => setFullScreen(!fullScreen)}>
+                  {fullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                </Button>
               </div>
               <div className={`overflow-auto ${fullScreen ? 'max-h-[calc(100vh-250px)]' : 'max-h-96'}`}>
                 <Table>
