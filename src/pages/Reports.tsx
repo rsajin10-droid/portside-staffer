@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { getAttendance, getStaffList, getJobAllotments, type AttendanceRecord } from '@/lib/storage';
-import { Download, Eye } from 'lucide-react';
+import { Download, Eye, Image } from 'lucide-react';
+import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -41,6 +42,7 @@ export default function Reports() {
 
   // Show report in app
   const [showReport, setShowReport] = useState(false);
+  const calendarRef = useRef<HTMLDivElement>(null);
 
   const staffList = getStaffList().sort((a, b) => a.name.localeCompare(b.name));
   const allAttendance = getAttendance();
@@ -158,6 +160,21 @@ export default function Reports() {
       body: calendarData,
     });
     doc.save(`driver_${staff?.name}_${MONTHS[month]}_${year}.pdf`);
+  };
+
+  const downloadCalendarJpg = async () => {
+    if (!calendarRef.current || !selectedDriver) return;
+    const canvas = await html2canvas(calendarRef.current, {
+      backgroundColor: '#ffffff',
+      scale: 2,
+      width: 600,
+      windowWidth: 600,
+    });
+    const link = document.createElement('a');
+    const staff = staffList.find(s => s.id === selectedDriver);
+    link.download = `${staff?.name}_${MONTHS[month]}_${year}.jpg`;
+    link.href = canvas.toDataURL('image/jpeg', 0.95);
+    link.click();
   };
 
   const downloadAllDriversExcel = () => {
@@ -291,6 +308,7 @@ export default function Reports() {
               <div className="flex gap-2 flex-wrap">
                 <Button size="sm" onClick={() => setShowReport(true)} disabled={!selectedDriver}><Eye className="h-4 w-4 mr-1" />View Report</Button>
                 <Button size="sm" variant="outline" onClick={downloadMonthDriverPdf} disabled={!selectedDriver}><Download className="h-4 w-4 mr-1" />PDF (Calendar)</Button>
+                <Button size="sm" variant="outline" onClick={downloadCalendarJpg} disabled={!selectedDriver || !showReport}><Image className="h-4 w-4 mr-1" />JPG</Button>
               </div>
             </CardContent>
           </Card>
@@ -359,49 +377,52 @@ export default function Reports() {
         )}
 
         {showReport && mode === 'month_driver' && selectedDriver && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">{driverSearch} - {MONTHS[month]} {year}</CardTitle>
-            </CardHeader>
-            <CardContent className="px-2 md:px-6">
-              {/* Calendar style view */}
-              <div className="grid grid-cols-7 gap-1 text-center mb-4">
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-                  <div key={d} className="text-[10px] font-semibold text-muted-foreground py-1">{d}</div>
-                ))}
-                {(() => {
-                  const firstDay = new Date(year, month, 1).getDay();
-                  const daysInMonth = new Date(year, month + 1, 0).getDate();
-                  const cells: React.ReactNode[] = [];
-                  for (let i = 0; i < firstDay; i++) cells.push(<div key={`e-${i}`} />);
-                  for (let d = 1; d <= daysInMonth; d++) {
-                    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-                    const dayRecs = monthDriverData.filter(r => r.date === dateStr);
-                    const status = dayRecs.length > 0 ? dayRecs.map(r => r.statusLabel).join('/') : 'WO';
-                    const bgClass = status.includes('P') ? 'bg-success/20 text-success' :
-                      status.includes('A') ? 'bg-destructive/20 text-destructive' :
-                      status.includes('OT') ? 'bg-warning/20 text-warning' :
-                      'bg-muted text-muted-foreground';
-                    cells.push(
-                      <div key={d} className={`rounded-lg p-1 ${bgClass}`}>
-                        <div className="text-[10px] font-bold">{d}</div>
-                        <div className="text-[8px] font-semibold">{status}</div>
-                      </div>
-                    );
-                  }
-                  return cells;
-                })()}
-              </div>
-              {monthDriverStats && (
-                <div className="flex gap-3 text-xs flex-wrap border-t pt-2">
-                  <span className="text-success font-medium">P: {monthDriverStats.present}</span>
-                  <span className="text-destructive font-medium">A: {monthDriverStats.absent}</span>
-                  <span className="text-warning font-medium">OT: {monthDriverStats.ot}</span>
-                  <span className="font-bold">Total Duty: {monthDriverStats.totalDuty}</span>
+          <div ref={calendarRef}>
+            <Card className="bg-card">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg font-semibold">{driverSearch} - {MONTHS[month]} {year}</CardTitle>
+              </CardHeader>
+              <CardContent className="px-3 md:px-6">
+                {/* Calendar style view matching sample image */}
+                <div className="grid grid-cols-7 gap-1.5 text-center mb-4">
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+                    <div key={d} className="text-xs font-bold text-muted-foreground py-1.5">{d}</div>
+                  ))}
+                  {(() => {
+                    const firstDay = new Date(year, month, 1).getDay();
+                    const daysInMonth = new Date(year, month + 1, 0).getDate();
+                    const cells: React.ReactNode[] = [];
+                    for (let i = 0; i < firstDay; i++) cells.push(<div key={`e-${i}`} />);
+                    for (let d = 1; d <= daysInMonth; d++) {
+                      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                      const dayRecs = monthDriverData.filter(r => r.date === dateStr);
+                      const status = dayRecs.length > 0 ? dayRecs.map(r => r.statusLabel).join('/') : 'WO';
+                      const bgColor = status.includes('P') ? 'bg-green-100 text-green-700 border-green-200' :
+                        status.includes('A') && !status.includes('(A)') ? 'bg-red-100 text-red-600 border-red-200' :
+                        status.includes('(A)') ? 'bg-red-100 text-red-600 border-red-200' :
+                        status.includes('OT') ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                        'bg-slate-100 text-slate-500 border-slate-200';
+                      cells.push(
+                        <div key={d} className={`rounded-xl p-2 border ${bgColor}`}>
+                          <div className="text-sm font-bold">{d}</div>
+                          <div className="text-[10px] font-semibold">{status}</div>
+                        </div>
+                      );
+                    }
+                    return cells;
+                  })()}
                 </div>
-              )}
-            </CardContent>
-          </Card>
+                {monthDriverStats && (
+                  <div className="flex gap-4 text-sm flex-wrap border-t pt-3">
+                    <span className="text-green-600 font-semibold">P: {monthDriverStats.present}</span>
+                    <span className="text-red-500 font-semibold">A: {monthDriverStats.absent}</span>
+                    <span className="text-amber-600 font-semibold">OT: {monthDriverStats.ot}</span>
+                    <span className="font-bold text-foreground">Total Duty: {monthDriverStats.totalDuty}</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         )}
       </div>
     </Layout>

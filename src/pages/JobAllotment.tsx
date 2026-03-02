@@ -13,7 +13,8 @@ import {
   getStaffList, VEHICLES, getShiftJobs, addJobAllotment, updateJobAllotment,
   deleteJobAllotment, getLastDriver, getShiftAttendance, type JobAllotmentRecord, type Staff
 } from '@/lib/storage';
-import { Plus, Pencil, Trash2, Download, MessageCircle } from 'lucide-react';
+import { Plus, Pencil, Trash2, Download, MessageCircle, Maximize2, Minimize2 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -45,6 +46,7 @@ export default function JobAllotment() {
   const [editRepeatVehicleSearch, setEditRepeatVehicleSearch] = useState('');
   const [editRepeatStaff, setEditRepeatStaff] = useState('');
   const [editRepeatStaffSearch, setEditRepeatStaffSearch] = useState('');
+  const [fullScreen, setFullScreen] = useState(false);
 
   const refresh = () => setRecords(getShiftJobs(date, currentShift));
   useEffect(() => { refresh(); }, [date, currentShift]);
@@ -349,13 +351,17 @@ export default function JobAllotment() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2 pb-3">
             <CardTitle className="text-base">List ({records.length})</CardTitle>
-            <div className="flex gap-1.5">
+            <div className="flex gap-1.5 items-center">
+              <div className="flex items-center gap-1">
+                <Switch checked={fullScreen} onCheckedChange={setFullScreen} className="scale-75" />
+                {fullScreen ? <Minimize2 className="h-3.5 w-3.5 text-muted-foreground" /> : <Maximize2 className="h-3.5 w-3.5 text-muted-foreground" />}
+              </div>
               <Button size="sm" variant="outline" className="h-8 text-xs" onClick={shareAsPdf}><Download className="h-3.5 w-3.5 mr-1" />PDF</Button>
               <Button size="sm" variant="outline" className="h-8 text-xs text-success" onClick={shareWhatsApp}><MessageCircle className="h-3.5 w-3.5 mr-1" />WA</Button>
             </div>
           </CardHeader>
           <CardContent className="px-2 md:px-6">
-            <div className="overflow-auto max-h-96">
+            <div className={`overflow-auto ${fullScreen ? 'max-h-[calc(100vh-200px)]' : 'max-h-96'}`}>
               <Table>
                 <TableHeader>
                   <TableRow>
