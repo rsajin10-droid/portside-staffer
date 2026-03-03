@@ -42,11 +42,15 @@ function ThemeInit() {
   return null;
 }
 
-// Register service worker for offline support
+// Register service worker only in production to avoid stale-cache issues in preview/dev
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  });
+  if (import.meta.env.PROD) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  } else {
+    navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((reg) => reg.unregister())).catch(() => {});
+  }
 }
 
 const App = () => (
