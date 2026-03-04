@@ -11,6 +11,7 @@ import Attendance from "./pages/Attendance";
 import JobAllotment from "./pages/JobAllotment";
 import Reports from "./pages/Reports";
 import DriverLogbook from "./pages/DriverLogbook";
+import DigitalDiary from "./pages/DigitalDiary";
 import SettingsPage from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import { useEffect } from "react";
@@ -69,6 +70,7 @@ const App = () => (
             <Route path="/job-allotment" element={<ProtectedRoute><JobAllotment /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
             <Route path="/driver-logbook" element={<ProtectedRoute><DriverLogbook /></ProtectedRoute>} />
+            <Route path="/digital-diary" element={<ProtectedRoute><DigitalDiary /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>

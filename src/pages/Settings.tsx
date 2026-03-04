@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { updateUserPassword, getUsers, deactivateUser } from '@/lib/storage';
 import { Download, Upload, ShieldOff, Pencil, Palette } from 'lucide-react';
+import { APP_VERSION, APP_LAST_UPDATED } from '@/lib/version';
 
 interface UserProfile {
   name: string;
@@ -315,7 +316,7 @@ export default function SettingsPage() {
 
               <Card>
                 <CardContent className="p-6 text-center space-y-2">
-                  <p className="text-xs text-muted-foreground">Version 1.0.0 · Last updated: 3 Mar 2026</p>
+                  <p className="text-xs text-muted-foreground">Version {APP_VERSION} · Last updated: {APP_LAST_UPDATED}</p>
                   <p className="text-sm text-muted-foreground">Created by <span className="font-semibold text-foreground">SAJIN RAJ</span></p>
                   <a href="https://wa.me/919746971097" target="_blank" rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 text-sm text-success hover:underline">
