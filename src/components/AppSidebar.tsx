@@ -21,7 +21,10 @@ const items = [
   { title: 'Digital Diary', url: '/digital-diary', icon: BookOpenText },
   { title: 'Settings', url: '/settings', icon: Settings },
 ];
-
+<Link to="/leave-management" className="flex items-center gap-2 p-2 hover:bg-gray-100 rounded-lg">
+  <span>📅</span>
+  <span>Leave Management</span>
+</Link>
 function SidebarUserProfile({ user }: { user: { id: string; displayName: string } }) {
   const [profileImage, setProfileImage] = useState('');
   useEffect(() => {
