@@ -16,6 +16,7 @@ import {
   getAttendance, type AttendanceRecord, type Staff
 } from '@/lib/storage';
 import { Pencil, Trash2, Download, MessageCircle, Maximize2, Minimize2 } from 'lucide-react';
+import { syncAttendanceToSupabase, deleteAttendanceFromSupabase } from '@/lib/supabaseSync';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -125,11 +126,18 @@ export default function Attendance() {
 
     if (editId) {
       updateAttendance(editId, { status: finalStatus, subStatus });
+      // Sync update to Supabase
+      const existing = records.find(r => r.id === editId);
+      if (existing) {
+        syncAttendanceToSupabase({ id: editId, date: existing.date, shift: existing.shift, staff_name: existing.staffName, mobile: existing.mobile, status: finalStatus, sub_status: subStatus, vehicle_number: existing.vehicleNumber, created_by: existing.createdBy });
+      }
       setEditId(null);
       toast({ title: 'Updated' });
     } else {
       const res = addAttendance({ date, shift: currentShift, staffId: staff.id, staffName: staff.name, mobile: staff.mobile, status: finalStatus, subStatus, createdBy: user?.displayName || '' });
       if (!res) return toast({ title: 'Already marked for this shift', variant: 'destructive' });
+      // Sync to Supabase
+      syncAttendanceToSupabase({ id: res.id, date, shift: currentShift, staff_name: staff.name, mobile: staff.mobile, status: finalStatus, sub_status: subStatus, created_by: user?.displayName || '' });
       toast({ title: `${staff.name} marked as ${statusLabels[finalStatus]}${subStatus ? ' + ' + subStatus.toUpperCase() : ''}` });
     }
     setSelectedStaff(''); setStaffSearch('');
@@ -137,7 +145,7 @@ export default function Attendance() {
     refresh();
   };
 
-  const handleDelete = (id: string) => { deleteAttendance(id); refresh(); toast({ title: 'Deleted' }); };
+  const handleDelete = (id: string) => { deleteAttendance(id); deleteAttendanceFromSupabase(id); refresh(); toast({ title: 'Deleted' }); };
   const handleEdit = (r: AttendanceRecord) => { setEditId(r.id); setSelectedStaff(r.staffId); setStaffSearch(r.staffName); };
 
   const buildShareText = () => {
