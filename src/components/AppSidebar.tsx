@@ -20,7 +20,12 @@ const items = [
   { title: 'Driver Logbook', url: '/driver-logbook', icon: BookOpen },
   { title: 'Digital Diary', url: '/digital-diary', icon: BookOpenText },
   { title: 'Settings', url: '/settings', icon: Settings },
-];
+];{
+  title: "Leave Management",
+  url: "/leave-management.html",
+  icon: Calendar,
+},
+    
 <Link to="/leave-management" className="flex items-center gap-2 p-2 hover:bg-gray-100 rounded-lg">
   <span>📅</span>
   <span>Leave Management</span>
