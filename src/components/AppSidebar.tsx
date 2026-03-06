@@ -66,17 +66,11 @@ export function AppSidebar() {
           <SidebarGroupLabel>Menu</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => (
+              {items.filter(item => item.url !== '/admin' || user?.username === 'appadmin').map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     isActive={location.pathname === item.url}
-                    onClick={() => {
-  if (item.url.endsWith('.html')) {
-    window.location.href = item.url;
-  } else {
-    navigate(item.url);
-  }
-}}
+                    onClick={() => navigate(item.url)}
             
                     className="cursor-pointer"
                   >
