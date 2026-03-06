@@ -9,13 +9,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import {
-  getStaffList, VEHICLES, getShiftJobs, addJobAllotment, updateJobAllotment,
-  deleteJobAllotment, getLastDriver, getShiftAttendance, type JobAllotmentRecord, type Staff
-} from '@/lib/storage';
+import { VEHICLES, type Staff } from '@/lib/storage';
 import { Plus, Pencil, Trash2, Download, MessageCircle, Maximize2, Minimize2 } from 'lucide-react';
-import { syncJobToSupabase, deleteJobFromSupabase } from '@/lib/supabaseSync';
-
+import {
+  fetchJobs, fetchAttendance, insertJob, updateJobRecord, deleteJobRecord,
+  getLastDriverForVehicle, checkJobDuplicate, fetchDrivers, isAdmin, subscribeToTable,
+  type SupabaseJob
+} from '@/lib/supabaseData';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -26,14 +26,15 @@ export default function JobAllotment() {
   const today = new Date().toISOString().split('T')[0];
   const [date, setDate] = useState(today);
   const [currentShift, setCurrentShift] = useState<'day' | 'night'>(shift);
-  const [staffList] = useState<Staff[]>(getStaffList());
+  const [staffList, setStaffList] = useState<Staff[]>([]);
   const [vehicle, setVehicle] = useState('');
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [selectedStaff, setSelectedStaff] = useState('');
   const [staffSearch, setStaffSearch] = useState('');
   const [mobile, setMobile] = useState('');
-  const [records, setRecords] = useState<JobAllotmentRecord[]>([]);
+  const [records, setRecords] = useState<SupabaseJob[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   // Repeat state
   const [showRepeat, setShowRepeat] = useState(false);
@@ -41,7 +42,7 @@ export default function JobAllotment() {
   const [fromShift, setFromShift] = useState<'day' | 'night'>(shift === 'day' ? 'night' : 'day');
   const [repeatDate, setRepeatDate] = useState(today);
   const [repeatShift, setRepeatShift] = useState<'day' | 'night'>(shift);
-  const [repeatRecords, setRepeatRecords] = useState<JobAllotmentRecord[]>([]);
+  const [repeatRecords, setRepeatRecords] = useState<SupabaseJob[]>([]);
   const [editRepeatId, setEditRepeatId] = useState<string | null>(null);
   const [editRepeatVehicle, setEditRepeatVehicle] = useState('');
   const [editRepeatVehicleSearch, setEditRepeatVehicleSearch] = useState('');
@@ -49,13 +50,47 @@ export default function JobAllotment() {
   const [editRepeatStaffSearch, setEditRepeatStaffSearch] = useState('');
   const [fullScreen, setFullScreen] = useState(false);
 
-  const refresh = () => setRecords(getShiftJobs(date, currentShift));
+  const adminUser = isAdmin(user?.username);
+  const createdBy = user?.displayName || '';
+
+  // Load staff from Supabase
+  useEffect(() => {
+    fetchDrivers().then(drivers => {
+      setStaffList(drivers.map(d => ({
+        id: d.phone_number || d.name,
+        name: d.name,
+        mobile: d.phone_number,
+        createdAt: d.created_at || '',
+      })));
+    });
+  }, []);
+
+  // Attendance-based drivers for current shift
+  const [attendanceDrivers, setAttendanceDrivers] = useState<Staff[]>([]);
+  useEffect(() => {
+    fetchAttendance(date, currentShift, createdBy, adminUser).then(att => {
+      const presentDrivers = att.filter(a => a.status !== 'absent').map(a => {
+        const s = staffList.find(st => st.id === a.staff_id || st.name === a.staff_name);
+        return s || { id: a.staff_id || a.staff_name, name: a.staff_name, mobile: a.mobile, createdAt: '' };
+      });
+      setAttendanceDrivers(presentDrivers);
+    });
+  }, [date, currentShift, staffList]);
+
+  const refresh = async () => {
+    setLoading(true);
+    const data = await fetchJobs(date, currentShift, createdBy, adminUser);
+    setRecords(data);
+    setLoading(false);
+  };
+
   useEffect(() => { refresh(); }, [date, currentShift]);
 
-  const attendanceDrivers = useMemo(() => {
-    const att = getShiftAttendance(date, currentShift);
-    return att.filter(a => a.status !== 'absent').map(a => staffList.find(s => s.id === a.staffId)).filter(Boolean) as Staff[];
-  }, [date, currentShift, staffList]);
+  // Real-time subscription
+  useEffect(() => {
+    const unsub = subscribeToTable('jobs', refresh);
+    return unsub;
+  }, [date, currentShift, createdBy, adminUser]);
 
   useEffect(() => {
     if (params.get('repeat') === '1') {
@@ -64,8 +99,8 @@ export default function JobAllotment() {
     }
   }, []);
 
-  const loadFromShift = () => {
-    const lastJobs = getShiftJobs(fromDate, fromShift);
+  const loadFromShift = async () => {
+    const lastJobs = await fetchJobs(fromDate, fromShift, createdBy, adminUser);
     setRepeatRecords(lastJobs);
   };
 
@@ -73,12 +108,15 @@ export default function JobAllotment() {
     if (showRepeat) loadFromShift();
   }, [fromDate, fromShift]);
 
-  const publishRepeat = () => {
+  const publishRepeat = async () => {
     let added = 0;
-    repeatRecords.forEach(j => {
-      const res = addJobAllotment({ date: repeatDate, shift: repeatShift, vehicleNumber: j.vehicleNumber, staffId: j.staffId, staffName: j.staffName, mobile: j.mobile, createdBy: user?.displayName || '' });
+    for (const j of repeatRecords) {
+      const res = await insertJob({
+        date: repeatDate, shift: repeatShift, vehicle_number: j.vehicle_number,
+        staff_id: j.staff_id, staff_name: j.staff_name, mobile: j.mobile, created_by: createdBy,
+      });
       if (res) added++;
-    });
+    }
     toast({ title: `${added} jobs published to ${repeatDate} ${repeatShift} shift` });
     setShowRepeat(false);
     setDate(repeatDate);
@@ -88,19 +126,19 @@ export default function JobAllotment() {
 
   const removeRepeatRecord = (id: string) => setRepeatRecords(prev => prev.filter(r => r.id !== id));
 
-  const startEditRepeat = (r: JobAllotmentRecord) => {
+  const startEditRepeat = (r: SupabaseJob) => {
     setEditRepeatId(r.id);
-    setEditRepeatVehicle(r.vehicleNumber);
-    setEditRepeatVehicleSearch(r.vehicleNumber);
-    setEditRepeatStaff(r.staffId);
-    setEditRepeatStaffSearch(r.staffName);
+    setEditRepeatVehicle(r.vehicle_number);
+    setEditRepeatVehicleSearch(r.vehicle_number);
+    setEditRepeatStaff(r.staff_id || r.staff_name);
+    setEditRepeatStaffSearch(r.staff_name);
   };
 
   const saveEditRepeat = () => {
     if (!editRepeatId || !editRepeatVehicle || !editRepeatStaff) return;
     const s = staffList.find(x => x.id === editRepeatStaff);
     if (!s) return;
-    setRepeatRecords(prev => prev.map(r => r.id === editRepeatId ? { ...r, vehicleNumber: editRepeatVehicle, staffId: s.id, staffName: s.name, mobile: s.mobile } : r));
+    setRepeatRecords(prev => prev.map(r => r.id === editRepeatId ? { ...r, vehicle_number: editRepeatVehicle, staff_id: s.id, staff_name: s.name, mobile: s.mobile } : r));
     setEditRepeatId(null);
     setEditRepeatVehicle(''); setEditRepeatVehicleSearch('');
     setEditRepeatStaff(''); setEditRepeatStaffSearch('');
@@ -111,47 +149,56 @@ export default function JobAllotment() {
 
   useEffect(() => {
     if (vehicle && !editId) {
-      const last = getLastDriver(vehicle);
-      if (last) {
-        setSelectedStaff(last.staffId);
-        setStaffSearch(last.staffName);
-        setMobile(last.mobile);
-      }
+      getLastDriverForVehicle(vehicle).then(last => {
+        if (last) {
+          setSelectedStaff(last.staff_id || last.staff_name);
+          setStaffSearch(last.staff_name);
+          setMobile(last.mobile);
+        }
+      });
     }
   }, [vehicle]);
 
   const filteredVehicles = VEHICLES.filter(v => v.toLowerCase().includes(vehicleSearch.toLowerCase()));
-  const assignedDriverIds = new Set(records.filter(r => r.id !== editId).map(r => r.staffId));
-  const filteredStaff = attendanceDrivers.filter(s => s.name.toLowerCase().includes(staffSearch.toLowerCase()) && !assignedDriverIds.has(s.id));
+  const assignedDriverIds = new Set(records.filter(r => r.id !== editId).map(r => r.staff_id || r.staff_name));
+  const filteredStaffForJob = attendanceDrivers.filter(s => s.name.toLowerCase().includes(staffSearch.toLowerCase()) && !assignedDriverIds.has(s.id));
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!vehicle || !selectedStaff) return toast({ title: 'Select vehicle and driver', variant: 'destructive' });
     const staffItem = staffList.find(s => s.id === selectedStaff);
     if (!staffItem) return;
+
     if (editId) {
-      updateJobAllotment(editId, { vehicleNumber: vehicle, staffId: staffItem.id, staffName: staffItem.name, mobile: staffItem.mobile });
-      syncJobToSupabase({ id: editId, date, shift: currentShift, vehicle_number: vehicle, staff_name: staffItem.name, mobile: staffItem.mobile, created_by: user?.displayName || '' });
+      await updateJobRecord(editId, { vehicle_number: vehicle, staff_id: staffItem.id, staff_name: staffItem.name, mobile: staffItem.mobile });
       setEditId(null);
       toast({ title: 'Updated' });
     } else {
-      const res = addJobAllotment({ date, shift: currentShift, vehicleNumber: vehicle, staffId: staffItem.id, staffName: staffItem.name, mobile: staffItem.mobile, createdBy: user?.displayName || '' });
-      if (!res) return toast({ title: 'Vehicle or driver already assigned this shift', variant: 'destructive' });
-      syncJobToSupabase({ id: res.id, date, shift: currentShift, vehicle_number: vehicle, staff_name: staffItem.name, mobile: staffItem.mobile, created_by: user?.displayName || '' });
+      const isDuplicate = await checkJobDuplicate(date, currentShift, vehicle, staffItem.id);
+      if (isDuplicate) return toast({ title: 'Vehicle or driver already assigned this shift', variant: 'destructive' });
+      const res = await insertJob({
+        date, shift: currentShift, vehicle_number: vehicle,
+        staff_id: staffItem.id, staff_name: staffItem.name, mobile: staffItem.mobile, created_by: createdBy,
+      });
+      if (!res) return toast({ title: 'Failed to add job', variant: 'destructive' });
       toast({ title: 'Job allotted' });
     }
     setVehicle(''); setVehicleSearch(''); setSelectedStaff(''); setStaffSearch(''); setMobile('');
     refresh();
   };
 
-  const handleEdit = (r: JobAllotmentRecord) => {
-    setEditId(r.id); setVehicle(r.vehicleNumber); setVehicleSearch(r.vehicleNumber);
-    setSelectedStaff(r.staffId); setStaffSearch(r.staffName); setMobile(r.mobile);
+  const handleEdit = (r: SupabaseJob) => {
+    setEditId(r.id); setVehicle(r.vehicle_number); setVehicleSearch(r.vehicle_number);
+    setSelectedStaff(r.staff_id || r.staff_name); setStaffSearch(r.staff_name); setMobile(r.mobile);
   };
-  const handleDelete = (id: string) => { deleteJobAllotment(id); deleteJobFromSupabase(id); refresh(); toast({ title: 'Deleted' }); };
+  const handleDelete = async (id: string) => {
+    await deleteJobRecord(id);
+    refresh();
+    toast({ title: 'Deleted' });
+  };
 
   const buildShareText = () => {
     let text = `*SKL - Job Allotment*\nDate: ${date} | Shift: ${currentShift.toUpperCase()}\nSupervisor: ${user?.displayName}\n\n`;
-    records.forEach((r, i) => { text += `${i + 1}. ${r.vehicleNumber} - ${r.staffName} - ${r.mobile}\n`; });
+    records.forEach((r, i) => { text += `${i + 1}. ${r.vehicle_number} - ${r.staff_name} - ${r.mobile}\n`; });
     return text;
   };
 
@@ -164,7 +211,7 @@ export default function JobAllotment() {
     autoTable(doc, {
       startY: 30,
       head: [['#', 'Vehicle', 'Driver Name', 'Mobile']],
-      body: records.map((r, i) => [i + 1, r.vehicleNumber, r.staffName, r.mobile]),
+      body: records.map((r, i) => [i + 1, r.vehicle_number, r.staff_name, r.mobile]),
     });
     doc.save(`job_allotment_${date}_${currentShift}.pdf`);
   };
@@ -266,8 +313,8 @@ export default function JobAllotment() {
                           </>
                         ) : (
                           <>
-                            <TableCell className="text-xs font-medium py-1.5">{r.vehicleNumber}</TableCell>
-                            <TableCell className="text-xs py-1.5">{r.staffName}</TableCell>
+                            <TableCell className="text-xs font-medium py-1.5">{r.vehicle_number}</TableCell>
+                            <TableCell className="text-xs py-1.5">{r.staff_name}</TableCell>
                             <TableCell className="text-xs py-1.5 hidden sm:table-cell">{r.mobile}</TableCell>
                             <TableCell className="flex gap-0.5 py-1.5">
                               <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => startEditRepeat(r)}><Pencil className="h-3.5 w-3.5" /></Button>
@@ -332,13 +379,13 @@ export default function JobAllotment() {
                   className="h-9 text-sm" />
                 {staffSearch && !selectedStaff && (
                   <div className="border rounded-md max-h-40 overflow-auto bg-popover z-50 relative shadow-lg">
-                    {filteredStaff.map(s => (
+                    {filteredStaffForJob.map(s => (
                       <div key={s.id} className="px-3 py-2 hover:bg-muted cursor-pointer text-sm"
                         onClick={() => { setSelectedStaff(s.id); setStaffSearch(s.name); setMobile(s.mobile); }}>
                         {s.name} - {s.mobile}
                       </div>
                     ))}
-                    {filteredStaff.length === 0 && <div className="px-3 py-2 text-muted-foreground text-sm">No drivers available</div>}
+                    {filteredStaffForJob.length === 0 && <div className="px-3 py-2 text-muted-foreground text-sm">No drivers available</div>}
                   </div>
                 )}
               </div>
@@ -378,8 +425,8 @@ export default function JobAllotment() {
                   {records.map((r, i) => (
                     <TableRow key={r.id}>
                       <TableCell className="text-xs py-1.5">{i + 1}</TableCell>
-                      <TableCell className="text-xs font-medium py-1.5">{r.vehicleNumber}</TableCell>
-                      <TableCell className="text-xs py-1.5">{r.staffName}</TableCell>
+                      <TableCell className="text-xs font-medium py-1.5">{r.vehicle_number}</TableCell>
+                      <TableCell className="text-xs py-1.5">{r.staff_name}</TableCell>
                       <TableCell className="text-xs py-1.5 hidden sm:table-cell">{r.mobile}</TableCell>
                       <TableCell className="flex gap-0.5 py-1.5">
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(r)}><Pencil className="h-3.5 w-3.5" /></Button>
@@ -388,7 +435,7 @@ export default function JobAllotment() {
                     </TableRow>
                   ))}
                   {records.length === 0 && (
-                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground text-xs">No records</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground text-xs">{loading ? 'Loading...' : 'No records'}</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
