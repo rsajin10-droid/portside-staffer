@@ -4,10 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
-import { getUsers, type AppUser } from '@/lib/storage';
+import { getUsers, deactivateUser, type AppUser } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
-import { Shield, Users, Truck, ClipboardCheck, RefreshCw } from 'lucide-react';
+import { syncAllUsersToSupabase, updateUserStatusInSupabase } from '@/lib/supabaseSync';
+import { useToast } from '@/hooks/use-toast';
+import { Shield, Users, Truck, ClipboardCheck, RefreshCw, Upload } from 'lucide-react';
 
 interface DriverRecord {
   id: string;
@@ -18,6 +21,7 @@ interface DriverRecord {
 
 export default function AdminPanel() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [appUsers, setAppUsers] = useState<AppUser[]>([]);
   const [drivers, setDrivers] = useState<DriverRecord[]>([]);
   const [attendanceCount, setAttendanceCount] = useState(0);
@@ -45,6 +49,25 @@ export default function AdminPanel() {
 
   useEffect(() => { fetchData(); }, []);
 
+  const handleToggleUser = async (u: AppUser) => {
+    const users = getUsers();
+    const updated = users.map(x =>
+      x.id === u.id ? { ...x, deactivated: !u.deactivated } : x
+    );
+    localStorage.setItem('skl_users', JSON.stringify(updated));
+    await updateUserStatusInSupabase(u.id, !u.deactivated);
+    toast({
+      title: u.deactivated ? `${u.displayName} activated` : `${u.displayName} deactivated`,
+    });
+    setAppUsers(updated);
+  };
+
+  const handleSyncAllUsers = async () => {
+    const users = getUsers();
+    await syncAllUsersToSupabase(users);
+    toast({ title: `${users.length} users synced to database` });
+  };
+
   if (user?.username !== 'appadmin') {
     return (
       <Layout>
@@ -64,9 +87,14 @@ export default function AdminPanel() {
           <h2 className="text-2xl font-bold flex items-center gap-2">
             <Shield className="h-6 w-6" /> Admin Panel
           </h2>
-          <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={handleSyncAllUsers}>
+              <Upload className="h-4 w-4 mr-1" /> Sync Users
+            </Button>
+            <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
+              <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -93,13 +121,13 @@ export default function AdminPanel() {
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold">{jobsCount}</p>
-              <p className="text-xs text-muted-foreground">Job Allotments</p>
+              <p className="text-2xl font-bold">{leaveCount}</p>
+              <p className="text-xs text-muted-foreground">Leave Requests</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* App Users */}
+        {/* App Users with activate/deactivate */}
         <Card>
           <CardHeader><CardTitle>Supervisor App Users ({appUsers.length})</CardTitle></CardHeader>
           <CardContent>
@@ -110,6 +138,7 @@ export default function AdminPanel() {
                   <TableHead>Username</TableHead>
                   <TableHead>Display Name</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -122,6 +151,21 @@ export default function AdminPanel() {
                       {u.deactivated
                         ? <Badge variant="destructive">Deactivated</Badge>
                         : <Badge className="bg-green-600 text-white">Active</Badge>}
+                    </TableCell>
+                    <TableCell>
+                      {u.username !== 'appadmin' ? (
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={!u.deactivated}
+                            onCheckedChange={() => handleToggleUser(u)}
+                          />
+                          <span className="text-xs text-muted-foreground">
+                            {u.deactivated ? 'Activate' : 'Deactivate'}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Admin</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
