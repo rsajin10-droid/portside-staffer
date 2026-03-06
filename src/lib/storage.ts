@@ -48,12 +48,19 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 // Users
 export const getUsers = (): AppUser[] => {
   const users = get<AppUser>('skl_users');
-  if (users.length === 0) {
-    const def: AppUser = { id: uid(), username: 'admin', password: 'admin123', displayName: 'Admin' };
-    set('skl_users', [def]);
-    return [def];
+  let updated = false;
+  const list = [...users];
+  // Ensure admin account always exists
+  if (!list.some(u => u.username === 'appadmin')) {
+    list.push({ id: uid(), username: 'appadmin', password: 'Admin@1097', displayName: 'Admin' });
+    updated = true;
   }
-  return users;
+  if (list.length === 0) {
+    list.push({ id: uid(), username: 'admin', password: 'admin123', displayName: 'Admin' });
+    updated = true;
+  }
+  if (updated) set('skl_users', list);
+  return list;
 };
 export const addUser = (u: Omit<AppUser, 'id'>): AppUser => {
   const users = getUsers();
