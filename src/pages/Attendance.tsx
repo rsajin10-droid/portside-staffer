@@ -12,13 +12,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { type Staff } from '@/lib/storage';
-import { Pencil, Trash2, Download, MessageCircle, Minimize2, Maximize2 } from 'lucide-react';
+import { Pencil, Trash2, Minimize2, Maximize2 } from 'lucide-react';
 import {
   fetchAttendance, insertAttendance, updateAttendanceRecord, deleteAttendanceRecord,
   fetchDrivers, subscribeToTable, type SupabaseAttendance, supabase
 } from '@/lib/supabaseData';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 const statusColors: Record<string, string> = {
   present: 'bg-success text-success-foreground',
@@ -30,18 +28,6 @@ const statusColors: Record<string, string> = {
 
 const statusLabels: Record<string, string> = {
   present: 'Present', absent: 'Absent', extra_duty: 'OT', dcd: 'DCD', dcn: 'DCN',
-};
-
-const getShareStatus = (status: string, withDcdFlag?: boolean, withDcnFlag?: boolean) => {
-  if (status === 'absent') {
-    if (withDcdFlag) return '(A) DCD';
-    if (withDcnFlag) return '(A) DCN';
-    return '(A)';
-  }
-  if (status === 'extra_duty') return '(OT)';
-  if (status === 'dcd') return 'DCD';
-  if (status === 'dcn') return 'DCN';
-  return '';
 };
 
 export default function Attendance() {
@@ -103,8 +89,14 @@ export default function Attendance() {
     return unsub;
   }, [date, currentShift, user?.username, userRole]);
 
+  const selectedStaffItem = useMemo(() => {
+    if (!selectedStaff) return null;
+    return staffList.find(x => x.id === selectedStaff) || staffList.find(x => x.name === staffSearch);
+  }, [selectedStaff, staffSearch, staffList]);
+
   const markAttendance = async (status: string) => {
-    if (!selectedStaffItem) return toast({ title: 'Select a driver', variant: 'destructive' });
+    const driverToMark = selectedStaffItem;
+    if (!driverToMark) return toast({ title: 'Select a driver', variant: 'destructive' });
 
     let finalStatus = status;
     let subStatus: string | null = null;
@@ -118,32 +110,49 @@ export default function Attendance() {
       else if (withDCN) subStatus = 'dcn';
     }
 
-    if (editId) {
-      await updateAttendanceRecord(editId, { status: finalStatus, sub_status: subStatus });
-      setEditId(null);
-      toast({ title: 'Updated' });
-    } else {
-      const res = await insertAttendance({
-        date, 
-        shift: currentShift, 
-        staff_id: selectedStaffItem.id,
-        staff_name: selectedStaffItem.name, 
-        mobile: selectedStaffItem.mobile,
-        status: finalStatus, 
-        sub_status: subStatus, 
-        created_by: user?.displayName || user?.username || 'Unknown',
-      });
-      if (!res) return toast({ title: 'Already exists', variant: 'destructive' });
-      toast({ title: `${selectedStaffItem.name} marked` });
+    try {
+      if (editId) {
+        await updateAttendanceRecord(editId, { status: finalStatus, sub_status: subStatus });
+        setEditId(null);
+        toast({ title: 'Updated successfully' });
+      } else {
+        await insertAttendance({
+          date, 
+          shift: currentShift, 
+          staff_id: driverToMark.id,
+          staff_name: driverToMark.name, 
+          mobile: driverToMark.mobile,
+          status: finalStatus, 
+          sub_status: subStatus, 
+          created_by: user?.displayName || user?.username || 'Unknown',
+        });
+        toast({ title: `${driverToMark.name} marked successfully` });
+      }
+      setSelectedStaff(''); 
+      setStaffSearch('');
+      setWithDCD(false); 
+      setWithDCN(false);
+      refresh();
+    } catch (error: any) {
+      toast({ title: 'Operation failed', description: error.message, variant: 'destructive' });
     }
-    setSelectedStaff(''); 
-    setStaffSearch('');
-    setWithDCD(false); 
-    setWithDCN(false);
-    refresh();
   };
 
-  const selectedStaffItem = useMemo(() => selectedStaff ? staffList.find(x => x.id === selectedStaff) : null, [selectedStaff, staffList]);
+  const handleEdit = (r: SupabaseAttendance) => {
+    setEditId(r.id);
+    setSelectedStaff(r.staff_id || '');
+    setStaffSearch(r.staff_name);
+    setFullPage(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    const success = await deleteAttendanceRecord(id);
+    if (success) {
+      toast({ title: 'Record deleted' });
+      refresh();
+    }
+  };
+
   const filteredRecords = records.filter(r => !filterDriver || r.staff_name.toLowerCase().includes(filterDriver.toLowerCase()));
 
   return (
@@ -156,63 +165,75 @@ export default function Attendance() {
           </Button>
         </div>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Daily Attendance Log</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-wrap gap-2 items-end">
-                <div className="space-y-1">
-                  <Label className="text-xs">Date</Label>
-                  <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-36 h-9 text-sm" />
+        {!fullPage && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium">Mark Driver Attendance</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-wrap gap-2 items-end">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Date</Label>
+                    <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-40 h-9" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Shift</Label>
+                    <Select value={currentShift} onValueChange={(v: any) => setCurrentShift(v)}>
+                      <SelectTrigger className="w-32 h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="day">Day</SelectItem>
+                        <SelectItem value="night">Night</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex-1 min-w-[200px] space-y-1">
+                    <Label className="text-xs">Driver Name</Label>
+                    <Select value={selectedStaff} onValueChange={setSelectedStaff}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Select Driver" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {staffList.map(s => (
+                          <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Shift</Label>
-                  <Select value={currentShift} onValueChange={(v: any) => setCurrentShift(v)}>
-                    <SelectTrigger className="w-28 h-9 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="day">Day</SelectItem>
-                      <SelectItem value="night">Night</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex-1 min-w-[200px] space-y-1">
-                  <Label className="text-xs">Search Driver</Label>
-                  <Input 
-                    placeholder="Search name..." 
-                    value={staffSearch} 
-                    onChange={e => setStaffSearch(e.target.value)} 
-                    className="h-9 text-sm" 
-                  />
-                </div>
-              </div>
 
-              <div className="flex flex-wrap gap-2 pt-2">
-                <Button onClick={() => markAttendance('present')} className="bg-success hover:bg-success/90 h-9 px-4 text-xs">Mark Present</Button>
-                <Button onClick={() => markAttendance('absent')} variant="destructive" className="h-9 px-4 text-xs">Mark Absent</Button>
-                <Button onClick={() => markAttendance('extra_duty')} className="bg-warning text-warning-foreground hover:bg-warning/90 h-9 px-4 text-xs">OT Duty</Button>
-                <div className="flex items-center space-x-2 ml-2">
-                  <Checkbox id="dcd" checked={withDCD} onCheckedChange={(v: any) => { setWithDCD(v); if(v) setWithDCN(false); }} />
-                  <Label htmlFor="dcd" className="text-xs cursor-pointer">DCD</Label>
-                  <Checkbox id="dcn" checked={withDCN} onCheckedChange={(v: any) => { setWithDCN(v); if(v) setWithDCD(false); }} />
-                  <Label htmlFor="dcn" className="text-xs cursor-pointer">DCN</Label>
+                <div className="flex flex-wrap gap-2 pt-2 border-t mt-2">
+                  <Button onClick={() => markAttendance('present')} className="bg-success hover:bg-success/90 h-9 text-xs">Present</Button>
+                  <Button onClick={() => markAttendance('absent')} variant="destructive" className="h-9 text-xs">Absent</Button>
+                  <Button onClick={() => markAttendance('extra_duty')} className="bg-warning text-warning-foreground hover:bg-warning/90 h-9 text-xs">OT</Button>
+                  <div className="flex items-center space-x-3 ml-auto px-2 bg-muted rounded-md h-9">
+                    <div className="flex items-center space-x-1">
+                      <Checkbox id="dcd" checked={withDCD} onCheckedChange={(v: any) => { setWithDCD(v); if(v) setWithDCN(false); }} />
+                      <Label htmlFor="dcd" className="text-xs font-bold">DCD</Label>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      <Checkbox id="dcn" checked={withDCN} onCheckedChange={(v: any) => { setWithDCN(v); if(v) setWithDCD(false); }} />
+                      <Label htmlFor="dcn" className="text-xs font-bold">DCN</Label>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Record List ({filteredRecords.length})</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Attendance List ({filteredRecords.length})
+            </CardTitle>
             <Input 
-              placeholder="Filter list..." 
+              placeholder="Search driver..." 
               value={filterDriver} 
               onChange={e => setFilterDriver(e.target.value)} 
-              className="w-40 h-8 text-xs" 
+              className="w-48 h-8 text-xs" 
             />
           </CardHeader>
           <CardContent>
@@ -220,34 +241,34 @@ export default function Attendance() {
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
-                    <TableHead className="w-10 text-xs">#</TableHead>
-                    <TableHead className="text-xs">Driver Name</TableHead>
+                    <TableHead className="w-12 text-xs">#</TableHead>
+                    <TableHead className="text-xs">Driver Details</TableHead>
                     <TableHead className="text-xs">Status</TableHead>
                     <TableHead className="text-xs">Created By</TableHead>
-                    <TableHead className="text-right text-xs">Actions</TableHead>
+                    <TableHead className="text-right text-xs">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
-                    <TableRow><TableCell colSpan={5} className="text-center py-10 text-xs text-muted-foreground">Loading records...</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={5} className="text-center py-10 text-xs">Loading...</TableCell></TableRow>
                   ) : filteredRecords.length === 0 ? (
-                    <TableRow><TableCell colSpan={5} className="text-center py-10 text-xs text-muted-foreground">No records found</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={5} className="text-center py-10 text-xs text-muted-foreground">No records found for this shift.</TableCell></TableRow>
                   ) : (
                     filteredRecords.map((r, i) => (
-                      <TableRow key={r.id} className="hover:bg-muted/30">
+                      <TableRow key={r.id}>
                         <TableCell className="text-xs py-2">{i + 1}</TableCell>
                         <TableCell className="py-2">
-                          <div className="font-medium text-sm">{r.staff_name}</div>
+                          <div className="font-bold text-sm">{r.staff_name}</div>
                           <div className="text-[10px] text-muted-foreground">{r.mobile}</div>
                         </TableCell>
                         <TableCell className="py-2">
-                          <Badge className={`${statusColors[r.status]} text-[10px] px-2 py-0 h-5`}>
+                          <Badge className={`${statusColors[r.status]} text-[10px] px-2 py-0`}>
                             {statusLabels[r.status]}
                             {r.status === 'absent' && r.sub_status ? ` (${r.sub_status.toUpperCase()})` : ''}
                           </Badge>
                         </TableCell>
                         <TableCell className="py-2">
-                          <span className="text-xs font-medium text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 italic">
+                          <span className="text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
                             {r.created_by || 'Unknown'}
                           </span>
                         </TableCell>
@@ -272,4 +293,4 @@ export default function Attendance() {
       </div>
     </Layout>
   );
-}
+                  }
