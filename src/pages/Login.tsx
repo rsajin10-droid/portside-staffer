@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Ship, UserPlus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { addUser } from '@/lib/storage';
+import { supabase } from '@/lib/supabase'; // Import supabase client
 import sklLogo from '@/assets/skl-logo.png';
 
 const SPECIAL_CODE = 'SKLD1097';
@@ -24,19 +24,7 @@ export default function Login() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Load remembered credentials
-  useState(() => {
-    const saved = localStorage.getItem('skl_remember');
-    if (saved) {
-      try {
-        const { username: u, password: p } = JSON.parse(saved);
-        setUsername(u || '');
-        setPassword(p || '');
-        setRememberMe(true);
-      } catch {}
-    }
-  });
-
+  // Handle Login
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (login(username, password, 'day')) {
@@ -47,23 +35,47 @@ export default function Login() {
       }
       navigate('/dashboard');
     } else {
-      toast({ title: 'Login Failed', description: 'Invalid username or password', variant: 'destructive' });
+      toast({ title: 'Login Failed', description: 'Invalid credentials', variant: 'destructive' });
     }
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  // ─── UPDATED REGISTER LOGIC ───
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (!regUsername.trim() || !regPassword.trim()) {
       return toast({ title: 'Fill all fields', variant: 'destructive' });
     }
+    
     if (regCode !== SPECIAL_CODE) {
-      return toast({ title: 'Invalid special code', description: 'Contact admin for the registration code', variant: 'destructive' });
+      return toast({ title: 'Invalid special code', variant: 'destructive' });
     }
-    addUser({ username: regUsername.trim(), password: regPassword.trim(), displayName: regUsername.trim() });
-    toast({ title: 'User registered! Set your name in Settings > Profile.' });
-    setIsRegister(false);
-    setUsername(regUsername);
-    setRegUsername(''); setRegPassword(''); setRegCode('');
+
+    // Creating email from username for Supabase Auth
+    const email = `${regUsername.trim().toLowerCase()}@skl.com`;
+
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: email,
+        password: regPassword,
+        options: {
+          data: {
+            username: regUsername.trim(),
+            display_name: regUsername.trim(),
+            special_code: regCode
+          }
+        }
+      });
+
+      if (error) throw error;
+
+      toast({ title: 'Registration Successful!', description: 'You can now log in.' });
+      setIsRegister(false);
+      setUsername(regUsername);
+    } catch (err: any) {
+      console.error('Registration Error:', err.message);
+      toast({ title: 'Registration Failed', description: err.message, variant: 'destructive' });
+    }
   };
 
   return (
