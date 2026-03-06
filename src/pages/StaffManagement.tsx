@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,48 +6,65 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
-import { getStaffList, addStaff, updateStaff, deleteStaff, importStaffBulk, type Staff } from '@/lib/storage';
 import { Plus, Pencil, Trash2, Upload, List, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
-import { syncStaffToSupabase, syncAllStaffToSupabase, deleteStaffFromSupabase, updateStaffInSupabase } from '@/lib/supabaseSync';
-
+import {
+  fetchDrivers, insertDriver, updateDriver, deleteDriver, bulkInsertDrivers,
+  subscribeToTable, type SupabaseDriver
+} from '@/lib/supabaseData';
 import * as XLSX from 'xlsx';
 
 export default function StaffManagement() {
-  const [staff, setStaff] = useState<Staff[]>(getStaffList());
+  const [staff, setStaff] = useState<SupabaseDriver[]>([]);
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
   const [editId, setEditId] = useState<string | null>(null);
+  const [editOldMobile, setEditOldMobile] = useState('');
   const [showList, setShowList] = useState(false);
   const [search, setSearch] = useState('');
   const [fullScreen, setFullScreen] = useState(false);
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
-  const refresh = () => setStaff(getStaffList());
+  const refresh = async () => {
+    setLoading(true);
+    const data = await fetchDrivers();
+    setStaff(data);
+    setLoading(false);
+  };
 
-  const handleAdd = () => {
+  useEffect(() => { refresh(); }, []);
+
+  // Real-time subscription
+  useEffect(() => {
+    const unsub = subscribeToTable('drivers', refresh);
+    return unsub;
+  }, []);
+
+  const handleAdd = async () => {
     if (!name.trim() || !mobile.trim()) return toast({ title: 'Fill all fields', variant: 'destructive' });
     if (!/^\d{10}$/.test(mobile)) return toast({ title: 'Mobile must be 10 digits', variant: 'destructive' });
     if (editId) {
-      const oldStaff = staff.find(s => s.id === editId);
-      updateStaff(editId, { name: name.trim(), mobile });
-      updateStaffInSupabase(oldStaff?.mobile || mobile, name.trim(), mobile);
-      setEditId(null);
+      await updateDriver(editOldMobile, name.trim(), mobile);
+      setEditId(null); setEditOldMobile('');
       toast({ title: 'Staff updated' });
     } else {
-      const res = addStaff({ name: name.trim(), mobile });
-      if (!res) return toast({ title: 'Name already exists', variant: 'destructive' });
-      syncStaffToSupabase(name.trim(), mobile);
+      const res = await insertDriver(name.trim(), mobile);
+      if (!res) return toast({ title: 'Failed to add', variant: 'destructive' });
       toast({ title: 'Staff added' });
     }
     setName(''); setMobile('');
     refresh();
   };
 
-  const handleEdit = (s: Staff) => { setEditId(s.id); setName(s.name); setMobile(s.mobile); };
-  const handleDelete = (id: string) => {
-    const s = staff.find(x => x.id === id);
-    deleteStaff(id);
-    if (s) deleteStaffFromSupabase(s.mobile);
+  const handleEdit = (s: SupabaseDriver) => {
+    setEditId(s.id || s.phone_number);
+    setEditOldMobile(s.phone_number);
+    setName(s.name);
+    setMobile(s.phone_number);
+  };
+
+  const handleDelete = async (s: SupabaseDriver) => {
+    await deleteDriver(s.phone_number);
     refresh();
     toast({ title: 'Staff deleted' });
   };
@@ -56,16 +73,15 @@ export default function StaffManagement() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
         const data = ev.target?.result;
         const wb = XLSX.read(data, { type: 'array' });
         const sheet = wb.Sheets[wb.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: '' });
-        
+
         const items: { name: string; mobile: string }[] = [];
         for (const row of jsonData) {
-          // Try various common header names
           const nameVal = row['name'] || row['Name'] || row['NAME'] || row['Driver Name'] || row['driver name'] || row['Driver'] || row['driver'] || '';
           const mobileVal = row['mobile'] || row['Mobile'] || row['MOBILE'] || row['Phone'] || row['phone'] || row['Mobile Number'] || row['mobile number'] || row['Contact'] || '';
           const nameStr = String(nameVal).trim();
@@ -74,16 +90,14 @@ export default function StaffManagement() {
             items.push({ name: nameStr, mobile: mobileStr });
           }
         }
-        
+
         if (items.length === 0) {
           toast({ title: 'No valid data found. Ensure columns: Name, Mobile', variant: 'destructive' });
           return;
         }
-        const count = importStaffBulk(items);
+        await bulkInsertDrivers(items);
         refresh();
-        // Sync all imported staff to Supabase
-        syncAllStaffToSupabase(items);
-        toast({ title: `${count} staff imported (${items.length - count} duplicates skipped)` });
+        toast({ title: `${items.length} staff imported/updated` });
       } catch (err) {
         toast({ title: 'Failed to read file. Ensure it is a valid Excel file.', variant: 'destructive' });
       }
@@ -113,7 +127,7 @@ export default function StaffManagement() {
             </div>
             <div className="flex gap-2 flex-wrap">
               <Button onClick={handleAdd}><Plus className="h-4 w-4 mr-1" />{editId ? 'Update' : 'Add Staff'}</Button>
-              {editId && <Button variant="outline" onClick={() => { setEditId(null); setName(''); setMobile(''); }}>Cancel</Button>}
+              {editId && <Button variant="outline" onClick={() => { setEditId(null); setEditOldMobile(''); setName(''); setMobile(''); }}>Cancel</Button>}
               <label className="cursor-pointer">
                 <Button variant="outline" asChild><span><Upload className="h-4 w-4 mr-1" />Import Excel</span></Button>
                 <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleImport} />
@@ -121,8 +135,8 @@ export default function StaffManagement() {
               <Button variant="outline" onClick={() => setShowList(!showList)}>
                 <List className="h-4 w-4 mr-1" />{showList ? 'Hide' : 'All Staff'} ({staff.length})
               </Button>
-              <Button variant="outline" onClick={() => { syncAllStaffToSupabase(staff.map(s => ({ name: s.name, mobile: s.mobile }))); toast({ title: 'All staff synced to Supabase' }); }}>
-                <RefreshCw className="h-4 w-4 mr-1" />Sync All
+              <Button variant="outline" onClick={refresh} disabled={loading}>
+                <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />Refresh
               </Button>
             </div>
           </CardContent>
@@ -149,13 +163,13 @@ export default function StaffManagement() {
                   </TableHeader>
                   <TableBody>
                     {filtered.map((s, i) => (
-                      <TableRow key={s.id}>
+                      <TableRow key={s.id || s.phone_number}>
                         <TableCell>{i + 1}</TableCell>
                         <TableCell className="font-medium">{s.name}</TableCell>
-                        <TableCell>{s.mobile}</TableCell>
+                        <TableCell>{s.phone_number}</TableCell>
                         <TableCell className="flex gap-1">
                           <Button size="icon" variant="ghost" onClick={() => handleEdit(s)}><Pencil className="h-4 w-4" /></Button>
-                          <Button size="icon" variant="ghost" onClick={() => handleDelete(s.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                          <Button size="icon" variant="ghost" onClick={() => handleDelete(s)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                         </TableCell>
                       </TableRow>
                     ))}

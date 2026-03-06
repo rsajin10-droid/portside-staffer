@@ -5,63 +5,34 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/lib/supabase';
 import { Calendar, CheckCircle, XCircle, RefreshCw, Inbox } from 'lucide-react';
-
-interface LeaveRequest {
-  id: string;
-  driver_name: string;
-  leave_date: string;
-  reason: string;
-  status: string;
-  created_at: string;
-}
+import { fetchLeaveRequests, updateLeaveStatus, subscribeToTable, type SupabaseLeaveRequest } from '@/lib/supabaseData';
 
 export default function LeaveManagement() {
-  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [requests, setRequests] = useState<SupabaseLeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const fetchRequests = async () => {
+  const refresh = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('leave_requests')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      toast({ title: 'Failed to fetch leave requests', description: error.message, variant: 'destructive' });
-    } else {
-      setRequests(data || []);
-    }
+    const data = await fetchLeaveRequests();
+    setRequests(data);
     setLoading(false);
   };
 
   useEffect(() => {
-    fetchRequests();
-
-    // Real-time subscription
-    const channel = supabase
-      .channel('leave_requests_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, () => {
-        fetchRequests();
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
+    refresh();
+    const unsub = subscribeToTable('leave_requests', refresh);
+    return unsub;
   }, []);
 
-  const updateStatus = async (id: string, status: 'approved' | 'rejected') => {
-    const { error } = await supabase
-      .from('leave_requests')
-      .update({ status })
-      .eq('id', id);
-
-    if (error) {
-      toast({ title: 'Update failed', description: error.message, variant: 'destructive' });
+  const handleUpdateStatus = async (id: string, status: 'approved' | 'rejected') => {
+    const ok = await updateLeaveStatus(id, status);
+    if (!ok) {
+      toast({ title: 'Update failed', variant: 'destructive' });
     } else {
       toast({ title: `Leave ${status} successfully` });
-      fetchRequests();
+      refresh();
     }
   };
 
@@ -84,7 +55,7 @@ export default function LeaveManagement() {
           <h2 className="text-2xl font-bold flex items-center gap-2">
             <Calendar className="h-6 w-6" /> Leave Management
           </h2>
-          <Button variant="outline" size="sm" onClick={fetchRequests} disabled={loading}>
+          <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </Button>
         </div>
@@ -144,10 +115,10 @@ export default function LeaveManagement() {
                         <TableCell>
                           {r.status === 'pending' ? (
                             <div className="flex gap-1">
-                              <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-50" onClick={() => updateStatus(r.id, 'approved')}>
+                              <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-50" onClick={() => handleUpdateStatus(r.id, 'approved')}>
                                 <CheckCircle className="h-4 w-4 mr-1" /> Approve
                               </Button>
-                              <Button size="sm" variant="outline" className="text-destructive border-destructive hover:bg-red-50" onClick={() => updateStatus(r.id, 'rejected')}>
+                              <Button size="sm" variant="outline" className="text-destructive border-destructive hover:bg-red-50" onClick={() => handleUpdateStatus(r.id, 'rejected')}>
                                 <XCircle className="h-4 w-4 mr-1" /> Reject
                               </Button>
                             </div>
