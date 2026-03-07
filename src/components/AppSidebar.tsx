@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Users, ClipboardCheck, Truck, FileText, BookOpen, BookOpenText, Settings, Calendar, LogOut, Shield
+  LayoutDashboard, Users, ClipboardCheck, Truck, FileText, BookOpen, BookOpenText, Settings, Calendar, LogOut
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -20,9 +20,8 @@ const items = [
   { title: 'Driver Logbook', url: '/driver-logbook', icon: BookOpen },
   { title: 'Digital Diary', url: '/digital-diary', icon: BookOpenText },
   { title: 'Settings', url: '/settings', icon: Settings },
-  { title: 'Leave Management', url: '/leave-management', icon: Calendar },
-  { title: 'Admin Panel', url: '/admin', icon: Shield },
-];
+  { title: 'Leave Management', url: '/leave-management.html', icon: Calendar },
+];//
 function SidebarUserProfile({ user }: { user: { id: string; displayName: string } }) {
   const [profileImage, setProfileImage] = useState('');
   useEffect(() => {
@@ -66,11 +65,17 @@ export function AppSidebar() {
           <SidebarGroupLabel>Menu</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.filter(item => item.url !== '/admin' || user?.username === 'appadmin').map((item) => (
+              {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     isActive={location.pathname === item.url}
-                    onClick={() => navigate(item.url)}
+                    onClick={() => {
+  if (item.url.endsWith('.html')) {
+    window.location.href = item.url;
+  } else {
+    navigate(item.url);
+  }
+}}
             
                     className="cursor-pointer"
                   >

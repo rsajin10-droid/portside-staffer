@@ -13,8 +13,6 @@ import Reports from "./pages/Reports";
 import DriverLogbook from "./pages/DriverLogbook";
 import DigitalDiary from "./pages/DigitalDiary";
 import SettingsPage from "./pages/Settings";
-import LeaveManagement from "./pages/LeaveManagement";
-import AdminPanel from "./pages/AdminPanel";
 import NotFound from "./pages/NotFound";
 import { useEffect } from "react";
 
@@ -74,8 +72,6 @@ const App = () => (
             <Route path="/driver-logbook" element={<ProtectedRoute><DriverLogbook /></ProtectedRoute>} />
             <Route path="/digital-diary" element={<ProtectedRoute><DigitalDiary /></ProtectedRoute>} />
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-            <Route path="/leave-management" element={<ProtectedRoute><LeaveManagement /></ProtectedRoute>} />
-            <Route path="/admin" element={<ProtectedRoute><AdminPanel /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
