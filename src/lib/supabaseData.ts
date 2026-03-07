@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 
+// ─── Types ───
 export interface SupabaseAttendance {
   id: string;
   date: string;
@@ -43,13 +44,20 @@ export interface SupabaseLeaveRequest {
   created_at: string;
 }
 
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+// ─── Helper: checks if user is admin ───
+// Updated to check both username and a potential role field
 export const isAdmin = (username?: string, role?: string) => {
   return username === 'appadmin' || role === 'admin';
 };
 
+// ─── Attendance CRUD ───
+// Fetches attendance based on date, shift and user role
 export const fetchAttendance = async (date: string, shift: string, createdBy?: string, isAdminUser = false) => {
   let query = supabase.from('attendance').select('*').eq('date', date).eq('shift', shift);
   
+  // If not admin, show only their own entries
   if (!isAdminUser && createdBy) {
     query = query.eq('created_by', createdBy);
   }
@@ -72,7 +80,8 @@ export const fetchAllAttendance = async (createdBy?: string, isAdminUser = false
 };
 
 export const insertAttendance = async (record: Omit<SupabaseAttendance, 'id' | 'created_at'>) => {
-  const { data, error } = await supabase.from('attendance').insert([record]).select().single();
+  const id = uid();
+  const { data, error } = await supabase.from('attendance').insert({ ...record, id }).select().single();
   if (error) { console.error('Insert attendance error:', error.message); return null; }
   return data as SupabaseAttendance;
 };
@@ -89,11 +98,14 @@ export const deleteAttendanceRecord = async (id: string) => {
   return !error;
 };
 
+// Check duplicate attendance
 export const checkAttendanceDuplicate = async (date: string, shift: string, staffId: string) => {
   const { data } = await supabase.from('attendance').select('id').eq('date', date).eq('shift', shift).eq('staff_id', staffId).limit(1);
   return (data && data.length > 0);
 };
 
+// ─── Jobs CRUD ───
+// Updated fetchJobs to support Admin/Supervisor visibility
 export const fetchJobs = async (date: string, shift: string, createdBy?: string, isAdminUser = false) => {
   let query = supabase.from('jobs').select('*').eq('date', date).eq('shift', shift);
   
@@ -107,7 +119,8 @@ export const fetchJobs = async (date: string, shift: string, createdBy?: string,
 };
 
 export const insertJob = async (record: Omit<SupabaseJob, 'id' | 'created_at'>) => {
-  const { data, error } = await supabase.from('jobs').insert([record]).select().single();
+  const id = uid();
+  const { data, error } = await supabase.from('jobs').insert({ ...record, id }).select().single();
   if (error) { console.error('Insert job error:', error.message); return null; }
   return data as SupabaseJob;
 };
@@ -124,6 +137,7 @@ export const deleteJobRecord = async (id: string) => {
   return !error;
 };
 
+// ─── Drivers CRUD ───
 export const fetchDrivers = async () => {
   const { data, error } = await supabase.from('drivers').select('*').order('name');
   if (error) { console.error('Fetch drivers error:', error.message); return []; }
@@ -139,29 +153,32 @@ export const insertDriver = async (name: string, mobile: string) => {
   return data as SupabaseDriver;
 };
 
+// ─── Leave Requests ───
 export const fetchLeaveRequests = async () => {
   const { data, error } = await supabase.from('leave_requests').select('*').order('created_at', { ascending: false });
   if (error) { console.error('Fetch leave requests error:', error.message); return []; }
   return (data || []) as SupabaseLeaveRequest[];
 };
 
+// ─── App Users Syncing ───
 export const fetchAppUsers = async () => {
   const { data, error } = await supabase.from('app_users').select('*').order('created_at', { ascending: true });
   if (error) { console.error('Fetch app users error:', error.message); return []; }
   return data || [];
 };
 
-export const syncUserToSupabase = async (user: { id: string; username: string; displayName: string; role?: string; deactivated?: boolean }) => {
+export const syncUserToSupabase = async (user: { id: string; username: string; displayName: string; deactivated?: boolean }) => {
+  // Syncing user and ensuring role is maintained or defaulted
   const { error } = await supabase.from('app_users').upsert({
     id: user.id,
     username: user.username,
     display_name: user.displayName,
-    role: user.role || 'supervisor',
     deactivated: user.deactivated || false,
   }, { onConflict: 'id' });
   if (error) console.error('Sync user error:', error.message);
 };
 
+// ─── Real-time subscription helper ───
 export const subscribeToTable = (table: string, callback: () => void) => {
   const channel = supabase
     .channel(`${table}_realtime_${Date.now()}`)
@@ -171,3 +188,43 @@ export const subscribeToTable = (table: string, callback: () => void) => {
     .subscribe();
   return () => { supabase.removeChannel(channel); };
 };
+
+// ─── Migrate localStorage to Supabase ───
+export const migrateLocalDataToSupabase = async (createdBy: string) => {
+  try {
+    const localAtt = JSON.parse(localStorage.getItem('skl_attendance') || '[]');
+    for (const a of localAtt) {
+      await supabase.from('attendance').upsert({
+        id: a.id,
+        date: a.date,
+        shift: a.shift,
+        staff_id: a.staffId,
+        staff_name: a.staffName,
+        mobile: a.mobile,
+        status: a.status,
+        sub_status: a.subStatus || null,
+        vehicle_number: a.vehicleNumber || null,
+        created_by: a.createdBy || createdBy,
+      }, { onConflict: 'id' });
+    }
+  } catch (e) { console.error('Migrate attendance failed:', e); }
+
+  try {
+    const localJobs = JSON.parse(localStorage.getItem('skl_jobs') || '[]');
+    for (const j of localJobs) {
+      await supabase.from('jobs').upsert({
+        id: j.id,
+        date: j.date,
+        shift: j.shift,
+        vehicle_number: j.vehicleNumber,
+        staff_id: j.staffId,
+        staff_name: j.staffName,
+        mobile: j.mobile,
+        created_by: j.createdBy || createdBy,
+      }, { onConflict: 'id' });
+    }
+  } catch (e) { console.error('Migrate jobs failed:', e); }
+
+  console.log('Local data migration complete');
+};
+    
