@@ -1,13 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase'; // Import supabase client
-
-interface AppUser {
-  id: string;
-  username: string;
-  displayName: string;
-  role?: string;
-  deactivated?: boolean;
-}
+import { getUsers, AppUser } from '@/lib/storage';
 
 interface AuthState {
   user: AppUser | null;
@@ -31,83 +23,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [shift, setShiftState] = useState<'day' | 'night'>('day');
   const [loading, setLoading] = useState(true);
 
-  // 1. Check for active Supabase session on mount
+  // Check for existing session in localStorage on mount
   useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        // Fetch additional user info from app_users table
-        const { data: userData } = await supabase
-          .from('app_users')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-
-        if (userData && !userData.deactivated) {
-          setUser({
-            id: session.user.id,
-            username: userData.username,
-            displayName: userData.display_name,
-            role: userData.role
-          });
+    const checkSession = () => {
+      const savedUser = localStorage.getItem('skl_active_user');
+      const savedShift = localStorage.getItem('skl_active_shift');
+      
+      if (savedUser) {
+        try {
+          const userData = JSON.parse(savedUser);
+          // Re-verify if user still exists and is not deactivated
+          const allUsers = getUsers();
+          const validUser = allUsers.find(u => u.id === userData.id && !u.deactivated);
+          
+          if (validUser) {
+            setUser(validUser);
+            if (savedShift) setShiftState(savedShift as 'day' | 'night');
+          } else {
+            localStorage.removeItem('skl_active_user');
+          }
+        } catch (e) {
+          console.error("Session restoration failed", e);
         }
       }
       setLoading(false);
     };
     checkSession();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        checkSession();
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
   }, []);
 
   const setShift = (s: 'day' | 'night') => {
     setShiftState(s);
+    localStorage.setItem('skl_active_shift', s);
   };
 
-  // 2. Updated Login to use Supabase Auth
-  const login = async (username: string, password: string, sh: 'day' | 'night') => {
-    const email = `${username.trim().toLowerCase()}@skl.com`;
-    
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
+  const login = async (username: string, password: string, sh: 'day' | 'night'): Promise<boolean> => {
+    // Artificial delay to mimic server response
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-    if (error || !data.user) return false;
+    const allUsers = getUsers();
+    const foundUser = allUsers.find(u => 
+      u.username.toLowerCase() === username.trim().toLowerCase() && 
+      u.password === password
+    );
 
-    // Check if user is deactivated in our table
-    const { data: userData } = await supabase
-      .from('app_users')
-      .select('*')
-      .eq('id', data.user.id)
-      .single();
-
-    if (!userData || userData.deactivated) {
-      await supabase.auth.signOut();
+    if (!foundUser || foundUser.deactivated) {
       return false;
     }
 
-    setUser({
-      id: data.user.id,
-      username: userData.username,
-      displayName: userData.display_name,
-      role: userData.role
-    });
-    setShiftState(sh);
+    // Set user state and persistence
+    setUser(foundUser);
+    setShift(sh);
+    localStorage.setItem('skl_active_user', JSON.stringify(foundUser));
     return true;
   };
 
-  const logout = async () => {
-    await supabase.auth.signOut();
+  const logout = () => {
     setUser(null);
+    localStorage.removeItem('skl_active_user');
+    localStorage.removeItem('skl_active_shift');
   };
 
   return (
