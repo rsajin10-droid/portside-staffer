@@ -1,21 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase'; // Import supabase client
-
-interface AppUser {
-  id: string;
-  username: string;
-  displayName: string;
-  role?: string;
-  deactivated?: boolean;
-}
+import { getUsers, type AppUser } from '@/lib/storage';
 
 interface AuthState {
   user: AppUser | null;
   shift: 'day' | 'night';
   setShift: (s: 'day' | 'night') => void;
-  login: (username: string, password: string, shift: 'day' | 'night') => Promise<boolean>;
+  login: (username: string, password: string, shift: 'day' | 'night') => boolean;
   logout: () => void;
-  loading: boolean;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -29,90 +20,57 @@ export const useAuth = () => {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AppUser | null>(null);
   const [shift, setShiftState] = useState<'day' | 'night'>('day');
-  const [loading, setLoading] = useState(true);
 
-  // 1. Check for active Supabase session on mount
   useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        // Fetch additional user info from app_users table
-        const { data: userData } = await supabase
-          .from('app_users')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-
-        if (userData && !userData.deactivated) {
-          setUser({
-            id: session.user.id,
-            username: userData.username,
-            displayName: userData.display_name,
-            role: userData.role
-          });
-        }
-      }
-      setLoading(false);
-    };
-    checkSession();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session) {
-        checkSession();
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    const saved = localStorage.getItem('skl_session');
+    if (saved) {
+      try {
+        const s = JSON.parse(saved);
+        setUser(s.user);
+        setShiftState(s.shift || 'day');
+      } catch {}
+    }
   }, []);
 
   const setShift = (s: 'day' | 'night') => {
     setShiftState(s);
-  };
-
-  // 2. Updated Login to use Supabase Auth
-  const login = async (username: string, password: string, sh: 'day' | 'night') => {
-    const email = `${username.trim().toLowerCase()}@skl.com`;
-    
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
-
-    if (error || !data.user) return false;
-
-    // Check if user is deactivated in our table
-    const { data: userData } = await supabase
-      .from('app_users')
-      .select('*')
-      .eq('id', data.user.id)
-      .single();
-
-    if (!userData || userData.deactivated) {
-      await supabase.auth.signOut();
-      return false;
+    const saved = localStorage.getItem('skl_session');
+    if (saved) {
+      try {
+        const session = JSON.parse(saved);
+        session.shift = s;
+        localStorage.setItem('skl_session', JSON.stringify(session));
+      } catch {}
     }
-
-    setUser({
-      id: data.user.id,
-      username: userData.username,
-      displayName: userData.display_name,
-      role: userData.role
-    });
-    setShiftState(sh);
-    return true;
   };
 
-  const logout = async () => {
-    await supabase.auth.signOut();
+  const login = (username: string, password: string, sh: 'day' | 'night') => {
+    const users = getUsers();
+    const found = users.find(u => u.username === username && u.password === password);
+    if (found) {
+      if (found.deactivated) return false;
+      // Use profile displayName if available
+      const profile = localStorage.getItem(`skl_profile_${found.id}`);
+      let displayName = found.displayName;
+      if (profile) {
+        try {
+          const p = JSON.parse(profile);
+          if (p.name) displayName = p.name;
+        } catch {}
+      }
+      const userWithName = { ...found, displayName };
+      setUser(userWithName);
+      setShiftState(sh);
+      localStorage.setItem('skl_session', JSON.stringify({ user: userWithName, shift: sh }));
+      return true;
+    }
+    return false;
+  };
+
+  const logout = () => {
     setUser(null);
+    localStorage.removeItem('skl_session');
   };
 
-  return (
-    <AuthContext.Provider value={{ user, shift, setShift, login, logout, loading }}>
-      {!loading && children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={{ user, shift, setShift, login, logout }}>{children}</AuthContext.Provider>;
 };
