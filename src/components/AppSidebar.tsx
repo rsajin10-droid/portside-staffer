@@ -69,14 +69,7 @@ export function AppSidebar() {
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     isActive={location.pathname === item.url}
-                    onClick={() => {
-  if (item.url.endsWith('.html')) {
-    window.location.href = item.url;
-  } else {
-    navigate(item.url);
-  }
-}}
-            
+                    onClick={() => navigate(item.url)}
                     className="cursor-pointer"
                   >
                     <item.icon className="h-4 w-4" />
