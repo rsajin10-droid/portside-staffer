@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Users, ClipboardCheck, Truck, FileText, BookOpen, BookOpenText, Settings, Calendar, LogOut
+  LayoutDashboard, Users, ClipboardCheck, Truck, FileText, BookOpen, BookOpenText, Settings, calendar, LogOut
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,6 +19,7 @@ const items = [
   { title: 'Reports', url: '/reports', icon: FileText },
   { title: 'Driver Logbook', url: '/driver-logbook', icon: BookOpen },
   { title: 'Digital Diary', url: '/digital-diary', icon: BookOpenText },
+  { title: 'Settings', url: '/settings', icon: Settings },
   { title: 'Settings', url: '/settings', icon: Settings },
   { title: 'Leave Management', url: '/leave-management.html', icon: Calendar },
 ];//
