@@ -11,12 +11,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { VEHICLES, type Staff } from '@/lib/storage';
-import { Pencil, Trash2, Download, MessageCircle, Maximize2, Minimize2 } from 'lucide-react';
 import {
-  fetchAttendance, insertAttendance, updateAttendanceRecord, deleteAttendanceRecord,
-  fetchDrivers, isAdmin, subscribeToTable, type SupabaseAttendance
-} from '@/lib/supabaseData';
+  getStaffList, getShiftAttendance, addAttendance, updateAttendance, deleteAttendance,
+  getAttendance, type AttendanceRecord, type Staff
+} from '@/lib/storage';
+import { Pencil, Trash2, Download, MessageCircle, Maximize2, Minimize2 } from 'lucide-react';
+import { syncAttendanceToSupabase, deleteAttendanceFromSupabase } from '@/lib/supabaseSync';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -50,16 +50,15 @@ export default function Attendance() {
   const today = new Date().toISOString().split('T')[0];
   const [date, setDate] = useState(today);
   const [currentShift, setCurrentShift] = useState<'day' | 'night'>(shift);
-  const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [staffList] = useState<Staff[]>(getStaffList());
   const [selectedStaff, setSelectedStaff] = useState('');
   const [staffSearch, setStaffSearch] = useState('');
-  const [records, setRecords] = useState<SupabaseAttendance[]>([]);
+  const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [filterDriver, setFilterDriver] = useState('');
   const [withDCD, setWithDCD] = useState(false);
   const [withDCN, setWithDCN] = useState(false);
   const [fullPage, setFullPage] = useState(false);
-  const [loading, setLoading] = useState(false);
 
   // Repeat last shift state
   const [showRepeat, setShowRepeat] = useState(false);
@@ -67,37 +66,10 @@ export default function Attendance() {
   const [fromShift, setFromShift] = useState<'day' | 'night'>(shift === 'day' ? 'night' : 'day');
   const [repeatDate, setRepeatDate] = useState(today);
   const [repeatShift, setRepeatShift] = useState<'day' | 'night'>(shift);
-  const [repeatRecords, setRepeatRecords] = useState<SupabaseAttendance[]>([]);
+  const [repeatRecords, setRepeatRecords] = useState<AttendanceRecord[]>([]);
 
-  const adminUser = isAdmin(user?.username);
-  const createdBy = user?.displayName || '';
-
-  // Load staff from Supabase
-  useEffect(() => {
-    fetchDrivers().then(drivers => {
-      setStaffList(drivers.map(d => ({
-        id: d.phone_number || d.name,
-        name: d.name,
-        mobile: d.phone_number,
-        createdAt: d.created_at || '',
-      })));
-    });
-  }, []);
-
-  const refresh = async () => {
-    setLoading(true);
-    const data = await fetchAttendance(date, currentShift, createdBy, adminUser);
-    setRecords(data);
-    setLoading(false);
-  };
-
+  const refresh = () => setRecords(getShiftAttendance(date, currentShift));
   useEffect(() => { refresh(); }, [date, currentShift]);
-
-  // Real-time subscription
-  useEffect(() => {
-    const unsub = subscribeToTable('attendance', refresh);
-    return unsub;
-  }, [date, currentShift, createdBy, adminUser]);
 
   useEffect(() => {
     if (params.get('repeat') === '1') {
@@ -106,24 +78,21 @@ export default function Attendance() {
     }
   }, []);
 
-  const loadFromShift = async () => {
-    const data = await fetchAttendance(fromDate, fromShift, createdBy, adminUser);
-    setRepeatRecords(data);
+  const loadFromShift = () => {
+    const lastAtt = getAttendance().filter(a => a.date === fromDate && a.shift === fromShift);
+    setRepeatRecords(lastAtt);
   };
 
   useEffect(() => {
     if (showRepeat) loadFromShift();
   }, [fromDate, fromShift]);
 
-  const publishRepeat = async () => {
+  const publishRepeat = () => {
     let added = 0;
-    for (const a of repeatRecords) {
-      const res = await insertAttendance({
-        date: repeatDate, shift: repeatShift, staff_id: a.staff_id, staff_name: a.staff_name,
-        mobile: a.mobile, status: a.status, sub_status: a.sub_status, created_by: createdBy,
-      });
+    repeatRecords.forEach(a => {
+      const res = addAttendance({ date: repeatDate, shift: repeatShift, staffId: a.staffId, staffName: a.staffName, mobile: a.mobile, status: a.status, createdBy: user?.displayName || '' });
       if (res) added++;
-    }
+    });
     toast({ title: `${added} records published to ${repeatDate} ${repeatShift} shift` });
     setShowRepeat(false);
     setDate(repeatDate);
@@ -132,19 +101,19 @@ export default function Attendance() {
   };
 
   const removeRepeatRecord = (id: string) => setRepeatRecords(prev => prev.filter(r => r.id !== id));
-  const updateRepeatStatus = (id: string, status: string) => {
+  const updateRepeatStatus = (id: string, status: AttendanceRecord['status']) => {
     setRepeatRecords(prev => prev.map(r => r.id === id ? { ...r, status } : r));
   };
 
-  const selectedStaffItem = useMemo(() => selectedStaff ? staffList.find(x => x.id === selectedStaff) : null, [selectedStaff, staffList]);
+  const staff = useMemo(() => selectedStaff ? staffList.find(x => x.id === selectedStaff) : null, [selectedStaff, staffList]);
   const filteredStaff = staffList.filter(s => s.name.toLowerCase().includes(staffSearch.toLowerCase()));
-  const filteredRecords = records.filter(r => !filterDriver || r.staff_name.toLowerCase().includes(filterDriver.toLowerCase()));
+  const filteredRecords = records.filter(r => !filterDriver || r.staffName.toLowerCase().includes(filterDriver.toLowerCase()));
 
-  const markAttendance = async (status: string) => {
-    if (!selectedStaffItem) return toast({ title: 'Select a driver', variant: 'destructive' });
-
+  const markAttendance = (status: AttendanceRecord['status']) => {
+    if (!staff) return toast({ title: 'Select a driver', variant: 'destructive' });
+    
     let finalStatus = status;
-    let subStatus: string | null = null;
+    let subStatus: 'dcd' | 'dcn' | undefined = undefined;
 
     if (status === 'present') {
       if (withDCD) finalStatus = 'dcd';
@@ -156,33 +125,28 @@ export default function Attendance() {
     }
 
     if (editId) {
-      await updateAttendanceRecord(editId, { status: finalStatus, sub_status: subStatus });
+      updateAttendance(editId, { status: finalStatus, subStatus });
+      // Sync update to Supabase
+      const existing = records.find(r => r.id === editId);
+      if (existing) {
+        syncAttendanceToSupabase({ id: editId, date: existing.date, shift: existing.shift, staff_name: existing.staffName, mobile: existing.mobile, status: finalStatus, sub_status: subStatus, vehicle_number: existing.vehicleNumber, created_by: existing.createdBy });
+      }
       setEditId(null);
       toast({ title: 'Updated' });
     } else {
-      const res = await insertAttendance({
-        date, shift: currentShift, staff_id: selectedStaffItem.id,
-        staff_name: selectedStaffItem.name, mobile: selectedStaffItem.mobile,
-        status: finalStatus, sub_status: subStatus, created_by: createdBy,
-      });
-      if (!res) return toast({ title: 'Failed to add or already exists', variant: 'destructive' });
-      toast({ title: `${selectedStaffItem.name} marked as ${statusLabels[finalStatus] || finalStatus}${subStatus ? ' + ' + subStatus.toUpperCase() : ''}` });
+      const res = addAttendance({ date, shift: currentShift, staffId: staff.id, staffName: staff.name, mobile: staff.mobile, status: finalStatus, subStatus, createdBy: user?.displayName || '' });
+      if (!res) return toast({ title: 'Already marked for this shift', variant: 'destructive' });
+      // Sync to Supabase
+      syncAttendanceToSupabase({ id: res.id, date, shift: currentShift, staff_name: staff.name, mobile: staff.mobile, status: finalStatus, sub_status: subStatus, created_by: user?.displayName || '' });
+      toast({ title: `${staff.name} marked as ${statusLabels[finalStatus]}${subStatus ? ' + ' + subStatus.toUpperCase() : ''}` });
     }
     setSelectedStaff(''); setStaffSearch('');
     setWithDCD(false); setWithDCN(false);
     refresh();
   };
 
-  const handleDelete = async (id: string) => {
-    await deleteAttendanceRecord(id);
-    refresh();
-    toast({ title: 'Deleted' });
-  };
-  const handleEdit = (r: SupabaseAttendance) => {
-    setEditId(r.id);
-    setSelectedStaff(r.staff_id || r.staff_name);
-    setStaffSearch(r.staff_name);
-  };
+  const handleDelete = (id: string) => { deleteAttendance(id); deleteAttendanceFromSupabase(id); refresh(); toast({ title: 'Deleted' }); };
+  const handleEdit = (r: AttendanceRecord) => { setEditId(r.id); setSelectedStaff(r.staffId); setStaffSearch(r.staffName); };
 
   const buildShareText = () => {
     const sorted = [...filteredRecords];
@@ -191,8 +155,8 @@ export default function Attendance() {
     const finalList = [...others, ...ot];
     let text = `*SKL - Attendance*\nDate: ${date} | Shift: ${currentShift.toUpperCase()}\nSupervisor: ${user?.displayName}\n\n`;
     finalList.forEach((r, i) => {
-      const st = getShareStatus(r.status, r.sub_status === 'dcd', r.sub_status === 'dcn');
-      text += `${i + 1}. ${r.staff_name} - ${r.mobile}${st ? ' - ' + st : ''}\n`;
+      const st = getShareStatus(r.status, r.subStatus === 'dcd', r.subStatus === 'dcn');
+      text += `${i + 1}. ${r.staffName} - ${r.mobile}${st ? ' - ' + st : ''}\n`;
     });
     return text;
   };
@@ -211,8 +175,8 @@ export default function Attendance() {
       startY: 30,
       head: [['#', 'Driver Name', 'Mobile', 'Status']],
       body: finalList.map((r, i) => {
-        const st = getShareStatus(r.status, r.sub_status === 'dcd', r.sub_status === 'dcn');
-        return [i + 1, r.staff_name, r.mobile, st || 'Present'];
+        const st = getShareStatus(r.status, r.subStatus === 'dcd', r.subStatus === 'dcn');
+        return [i + 1, r.staffName, r.mobile, st || 'Present'];
       }),
     });
     doc.save(`attendance_${date}_${currentShift}.pdf`);
@@ -223,7 +187,7 @@ export default function Attendance() {
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
   };
 
-  // Full page mode
+  // Full page mode - show only the list
   if (fullPage) {
     return (
       <Layout>
@@ -252,9 +216,9 @@ export default function Attendance() {
                 {filteredRecords.map((r, i) => (
                   <TableRow key={r.id}>
                     <TableCell className="text-xs py-1.5">{i + 1}</TableCell>
-                    <TableCell className="text-xs font-medium py-1.5">{r.staff_name}</TableCell>
+                    <TableCell className="text-xs font-medium py-1.5">{r.staffName}</TableCell>
                     <TableCell className="text-xs py-1.5">{r.mobile}</TableCell>
-                    <TableCell className="py-1.5"><Badge className={`${statusColors[r.status]} text-[10px] px-1.5`}>{statusLabels[r.status]}{r.status === 'absent' && r.sub_status ? ` + ${r.sub_status.toUpperCase()}` : ''}</Badge></TableCell>
+                    <TableCell className="py-1.5"><Badge className={`${statusColors[r.status]} text-[10px] px-1.5`}>{statusLabels[r.status]}{r.status === 'absent' && r.subStatus ? ` + ${r.subStatus.toUpperCase()}` : ''}</Badge></TableCell>
                     <TableCell className="flex gap-0.5 py-1.5">
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { handleEdit(r); setFullPage(false); }}><Pencil className="h-3.5 w-3.5" /></Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(r.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
@@ -329,9 +293,9 @@ export default function Attendance() {
                   <TableBody>
                     {repeatRecords.map(r => (
                       <TableRow key={r.id}>
-                        <TableCell className="text-xs py-1.5">{r.staff_name}</TableCell>
+                        <TableCell className="text-xs py-1.5">{r.staffName}</TableCell>
                         <TableCell className="py-1.5">
-                          <Select value={r.status} onValueChange={v => updateRepeatStatus(r.id, v)}>
+                          <Select value={r.status} onValueChange={v => updateRepeatStatus(r.id, v as AttendanceRecord['status'])}>
                             <SelectTrigger className="w-28 h-7 text-xs"><SelectValue /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="present">Present</SelectItem>
@@ -402,8 +366,9 @@ export default function Attendance() {
                 )}
               </div>
             </div>
-            {selectedStaffItem && <p className="text-xs text-muted-foreground">Mobile: {selectedStaffItem.mobile}</p>}
-
+            {staff && <p className="text-xs text-muted-foreground">Mobile: {staff.mobile}</p>}
+            
+            {/* DCD/DCN checkboxes */}
             <div className="flex items-center gap-4 flex-wrap">
               <label className="flex items-center gap-1.5 text-xs cursor-pointer">
                 <Checkbox checked={withDCD} onCheckedChange={(v) => { setWithDCD(!!v); if (v) setWithDCN(false); }} />
@@ -450,9 +415,9 @@ export default function Attendance() {
                   {filteredRecords.map((r, i) => (
                     <TableRow key={r.id}>
                       <TableCell className="text-xs py-1.5">{i + 1}</TableCell>
-                      <TableCell className="text-xs font-medium py-1.5">{r.staff_name}</TableCell>
+                      <TableCell className="text-xs font-medium py-1.5">{r.staffName}</TableCell>
                       <TableCell className="text-xs py-1.5 hidden sm:table-cell">{r.mobile}</TableCell>
-                      <TableCell className="py-1.5"><Badge className={`${statusColors[r.status]} text-[10px] px-1.5`}>{statusLabels[r.status]}{r.status === 'absent' && r.sub_status ? ` + ${r.sub_status.toUpperCase()}` : ''}</Badge></TableCell>
+                      <TableCell className="py-1.5"><Badge className={`${statusColors[r.status]} text-[10px] px-1.5`}>{statusLabels[r.status]}{r.status === 'absent' && r.subStatus ? ` + ${r.subStatus.toUpperCase()}` : ''}</Badge></TableCell>
                       <TableCell className="flex gap-0.5 py-1.5">
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(r)}><Pencil className="h-3.5 w-3.5" /></Button>
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(r.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
@@ -460,7 +425,7 @@ export default function Attendance() {
                     </TableRow>
                   ))}
                   {filteredRecords.length === 0 && (
-                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground text-xs">{loading ? 'Loading...' : 'No records'}</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground text-xs">No records</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
