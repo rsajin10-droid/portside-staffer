@@ -1,45 +1,5 @@
 import { supabase } from './supabase';
 
-// ─── App Users (Supervisors) ───
-
-export const syncUserToSupabase = async (user: { id: string; username: string; displayName: string; deactivated?: boolean }) => {
-  try {
-    const { error } = await supabase.from('app_users').upsert({
-      id: user.id,
-      username: user.username,
-      display_name: user.displayName,
-      deactivated: user.deactivated || false,
-    }, { onConflict: 'id' });
-    if (error) console.error('Supabase user sync error:', error.message);
-  } catch (e) {
-    console.error('Supabase user sync failed:', e);
-  }
-};
-
-export const syncAllUsersToSupabase = async (users: { id: string; username: string; displayName: string; deactivated?: boolean }[]) => {
-  try {
-    const rows = users.map(u => ({
-      id: u.id,
-      username: u.username,
-      display_name: u.displayName,
-      deactivated: u.deactivated || false,
-    }));
-    const { error } = await supabase.from('app_users').upsert(rows, { onConflict: 'id' });
-    if (error) console.error('Supabase bulk user sync error:', error.message);
-  } catch (e) {
-    console.error('Supabase bulk user sync failed:', e);
-  }
-};
-
-export const updateUserStatusInSupabase = async (id: string, deactivated: boolean) => {
-  try {
-    const { error } = await supabase.from('app_users').update({ deactivated }).eq('id', id);
-    if (error) console.error('Supabase user status update error:', error.message);
-  } catch (e) {
-    console.error('Supabase user status update failed:', e);
-  }
-};
-
 // ─── Drivers (Staff) ───
 
 export const syncStaffToSupabase = async (name: string, mobile: string) => {
