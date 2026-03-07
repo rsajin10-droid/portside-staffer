@@ -7,8 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { getStaffList, addStaff, updateStaff, deleteStaff, importStaffBulk, type Staff } from '@/lib/storage';
-import { Plus, Pencil, Trash2, Upload, List, Maximize2, Minimize2, RefreshCw } from 'lucide-react';
-import { syncStaffToSupabase, syncAllStaffToSupabase, deleteStaffFromSupabase, updateStaffInSupabase } from '@/lib/supabaseSync';
+import { Plus, Pencil, Trash2, Upload, List, Maximize2, Minimize2 } from 'lucide-react';
 
 import * as XLSX from 'xlsx';
 
@@ -28,15 +27,12 @@ export default function StaffManagement() {
     if (!name.trim() || !mobile.trim()) return toast({ title: 'Fill all fields', variant: 'destructive' });
     if (!/^\d{10}$/.test(mobile)) return toast({ title: 'Mobile must be 10 digits', variant: 'destructive' });
     if (editId) {
-      const oldStaff = staff.find(s => s.id === editId);
       updateStaff(editId, { name: name.trim(), mobile });
-      updateStaffInSupabase(oldStaff?.mobile || mobile, name.trim(), mobile);
       setEditId(null);
       toast({ title: 'Staff updated' });
     } else {
       const res = addStaff({ name: name.trim(), mobile });
       if (!res) return toast({ title: 'Name already exists', variant: 'destructive' });
-      syncStaffToSupabase(name.trim(), mobile);
       toast({ title: 'Staff added' });
     }
     setName(''); setMobile('');
@@ -44,13 +40,7 @@ export default function StaffManagement() {
   };
 
   const handleEdit = (s: Staff) => { setEditId(s.id); setName(s.name); setMobile(s.mobile); };
-  const handleDelete = (id: string) => {
-    const s = staff.find(x => x.id === id);
-    deleteStaff(id);
-    if (s) deleteStaffFromSupabase(s.mobile);
-    refresh();
-    toast({ title: 'Staff deleted' });
-  };
+  const handleDelete = (id: string) => { deleteStaff(id); refresh(); toast({ title: 'Staff deleted' }); };
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -81,8 +71,6 @@ export default function StaffManagement() {
         }
         const count = importStaffBulk(items);
         refresh();
-        // Sync all imported staff to Supabase
-        syncAllStaffToSupabase(items);
         toast({ title: `${count} staff imported (${items.length - count} duplicates skipped)` });
       } catch (err) {
         toast({ title: 'Failed to read file. Ensure it is a valid Excel file.', variant: 'destructive' });
@@ -120,9 +108,6 @@ export default function StaffManagement() {
               </label>
               <Button variant="outline" onClick={() => setShowList(!showList)}>
                 <List className="h-4 w-4 mr-1" />{showList ? 'Hide' : 'All Staff'} ({staff.length})
-              </Button>
-              <Button variant="outline" onClick={() => { syncAllStaffToSupabase(staff.map(s => ({ name: s.name, mobile: s.mobile }))); toast({ title: 'All staff synced to Supabase' }); }}>
-                <RefreshCw className="h-4 w-4 mr-1" />Sync All
               </Button>
             </div>
           </CardContent>

@@ -14,7 +14,6 @@ import {
   deleteJobAllotment, getLastDriver, getShiftAttendance, type JobAllotmentRecord, type Staff
 } from '@/lib/storage';
 import { Plus, Pencil, Trash2, Download, MessageCircle, Maximize2, Minimize2 } from 'lucide-react';
-import { syncJobToSupabase, deleteJobFromSupabase } from '@/lib/supabaseSync';
 
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -130,13 +129,11 @@ export default function JobAllotment() {
     if (!staffItem) return;
     if (editId) {
       updateJobAllotment(editId, { vehicleNumber: vehicle, staffId: staffItem.id, staffName: staffItem.name, mobile: staffItem.mobile });
-      syncJobToSupabase({ id: editId, date, shift: currentShift, vehicle_number: vehicle, staff_name: staffItem.name, mobile: staffItem.mobile, created_by: user?.displayName || '' });
       setEditId(null);
       toast({ title: 'Updated' });
     } else {
       const res = addJobAllotment({ date, shift: currentShift, vehicleNumber: vehicle, staffId: staffItem.id, staffName: staffItem.name, mobile: staffItem.mobile, createdBy: user?.displayName || '' });
       if (!res) return toast({ title: 'Vehicle or driver already assigned this shift', variant: 'destructive' });
-      syncJobToSupabase({ id: res.id, date, shift: currentShift, vehicle_number: vehicle, staff_name: staffItem.name, mobile: staffItem.mobile, created_by: user?.displayName || '' });
       toast({ title: 'Job allotted' });
     }
     setVehicle(''); setVehicleSearch(''); setSelectedStaff(''); setStaffSearch(''); setMobile('');
@@ -147,7 +144,7 @@ export default function JobAllotment() {
     setEditId(r.id); setVehicle(r.vehicleNumber); setVehicleSearch(r.vehicleNumber);
     setSelectedStaff(r.staffId); setStaffSearch(r.staffName); setMobile(r.mobile);
   };
-  const handleDelete = (id: string) => { deleteJobAllotment(id); deleteJobFromSupabase(id); refresh(); toast({ title: 'Deleted' }); };
+  const handleDelete = (id: string) => { deleteJobAllotment(id); refresh(); toast({ title: 'Deleted' }); };
 
   const buildShareText = () => {
     let text = `*SKL - Job Allotment*\nDate: ${date} | Shift: ${currentShift.toUpperCase()}\nSupervisor: ${user?.displayName}\n\n`;
