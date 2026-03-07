@@ -46,29 +46,20 @@ export const updateStaffInSupabase = async (oldMobile: string, name: string, mob
 
 // ─── Attendance ───
 
-export const syncAttendanceToSupabase = async (record: any) => {
+export const syncAttendanceToSupabase = async (record: {
+  id: string;
+  date: string;
+  shift: string;
+  staff_name: string;
+  mobile: string;
+  status: string;
+  sub_status?: string;
+  vehicle_number?: string;
+  created_by: string;
+}) => {
   try {
-    const dataToSync = {
-      id: record.id,
-      date: record.date,
-      shift: record.shift,
-      status: record.status,
-      staff_name: record.staffName || record.staff_name,
-      mobile: record.mobile,
-      sub_status: record.subStatus || record.sub_status || null,
-      created_by: record.createdBy || record.created_by || null,
-      vehicle_number: record.vehicleNumber || record.vehicle_number || null
-    };
-
-    const { error } = await supabase
-      .from('attendance')
-      .upsert(dataToSync, { onConflict: 'id' });
-
-    if (error) {
-      console.error('Supabase attendance sync error:', error.message);
-    } else {
-      console.log('Attendance synced successfully');
-    }
+    const { error } = await supabase.from('attendance').upsert(record, { onConflict: 'id' });
+    if (error) console.error('Supabase attendance sync error:', error.message);
   } catch (e) {
     console.error('Supabase attendance sync failed:', e);
   }
