@@ -22,7 +22,7 @@ const items = [
   { title: 'Settings', url: '/settings', icon: Settings },
   { title: 'Settings', url: '/settings', icon: Settings },
   { title: 'Leave Management', url: '/leave-management.html', icon: Calendar },
-];//
+]
 function SidebarUserProfile({ user }: { user: { id: string; displayName: string } }) {
   const [profileImage, setProfileImage] = useState('');
   useEffect(() => {
