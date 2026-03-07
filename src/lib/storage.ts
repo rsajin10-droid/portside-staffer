@@ -48,7 +48,7 @@ export interface AppUser {
   deactivated?: boolean;
 }
 
-// --- Vehicles List (T001 to T200) ---
+// Vehicles List (T001 to T200)
 export const VEHICLES = Array.from({ length: 200 }, (_, i) => `T${String(i + 1).padStart(3, '0')}`);
 
 // --- Local Storage Helpers ---
@@ -143,13 +143,6 @@ export const importStaffBulk = (items: { name: string; mobile: string }[]): numb
 
 export const getAttendance = (): AttendanceRecord[] => get<AttendanceRecord>('skl_attendance');
 
-/**
- * Counts attendance for the Dashboard summary
- */
-export const getShiftAttendance = (date: string, shift: 'day' | 'night') => {
-  return getAttendance().filter(r => r.date === date && r.shift === shift);
-};
-
 export const addAttendance = (r: Omit<AttendanceRecord, 'id' | 'createdAt'>): AttendanceRecord | null => {
   const list = getAttendance();
   if (list.some(x => x.date === r.date && x.shift === r.shift && x.staffId === r.staffId)) return null;
@@ -171,13 +164,6 @@ export const deleteAttendance = (id: string) => {
 // --- Job Allotment Management ---
 
 export const getJobAllotments = (): JobAllotmentRecord[] => get<JobAllotmentRecord>('skl_jobs');
-
-/**
- * Counts job allotments for the Dashboard summary
- */
-export const getShiftJobs = (date: string, shift: 'day' | 'night') => {
-  return getJobAllotments().filter(j => j.date === date && j.shift === shift);
-};
 
 export const addJobAllotment = (r: Omit<JobAllotmentRecord, 'id' | 'createdAt'>): JobAllotmentRecord | null => {
   const list = getJobAllotments();
@@ -209,4 +195,3 @@ export const updateLeaveStatus = (id: string, status: 'approved' | 'rejected') =
   set('skl_leave_requests', updated);
   return true;
 };
-  
