@@ -3,101 +3,116 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Supervisor - Leave Management</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <title>Supervisor - Leave Management (Local)</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background-color: #f1f5f9; padding: 20px; }
-        .container { max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        h2 { color: #1e293b; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f1f5f9; padding: 20px; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; margin-bottom: 20px; }
+        h2 { color: #1e293b; margin: 0; }
+        table { width: 100%; border-collapse: collapse; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
-        th { background-color: #f8fafc; color: #64748b; }
-        .btn { padding: 6px 12px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-right: 5px; }
+        th { background-color: #f8fafc; color: #64748b; font-size: 14px; text-transform: uppercase; }
+        .btn { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; transition: 0.2s; }
         .approve { background-color: #16a34a; color: white; }
+        .approve:hover { background-color: #15803d; }
         .reject { background-color: #dc2626; color: white; }
-        .status-badge { padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
+        .reject:hover { background-color: #b91c1c; }
+        .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
         .pending { background: #fef9c3; color: #854d0e; }
         .approved { background: #dcfce7; color: #166534; }
         .rejected { background: #fee2e2; color: #991b1b; }
+        .empty-msg { text-align: center; color: #94a3b8; padding: 40px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>Leave Management System</h2>
+    <div class="header">
+        <h2>Leave Management System</h2>
+        <small id="sync-status" style="color: #64748b;">Mode: Local Storage</small>
+    </div>
+    
     <table>
         <thead>
             <tr>
                 <th>Driver Name</th>
-                <th>Date</th>
+                <th>Leave Date</th>
                 <th>Reason</th>
                 <th>Status</th>
-                <th>Action</th>
+                <th>Actions</th>
             </tr>
         </thead>
         <tbody id="leave-table-body">
             </tbody>
     </table>
+    <div id="no-data" class="empty-msg" style="display: none;">No leave requests found.</div>
 </div>
 
 <script>
-    const supabaseUrl = 'https://owbsjzczcvfrnldpoaic.supabase.co';
-    const supabaseKey = 'sb_publishable_01ukOcIWuYr2RLrxKE1R2w_bc9GHPTQ';
-    const _supabase = supabase.createClient(supabaseUrl, supabaseKey);
+    // Local Storage Key
+    const STORAGE_KEY = 'skl_leave_requests';
 
-    async function fetchLeaveRequests() {
-        const { data, error } = await _supabase
-            .from('leave_requests')
-            .select('*')
-            .order('created_at', { ascending: false });
+    // 1. Function to fetch data from Local Storage
+    function fetchLeaveRequests() {
+        const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+        const tableBody = document.getElementById('leave-table-body');
+        const noData = document.getElementById('no-data');
+        
+        tableBody.innerHTML = '';
 
-        if (error) {
-            console.error('Error fetching:', error);
+        if (data.length === 0) {
+            noData.style.display = 'block';
             return;
         }
 
-        const tableBody = document.getElementById('leave-table-body');
-        tableBody.innerHTML = '';
+        noData.style.display = 'none';
 
-        if (data) {
-            data.forEach(request => {
-                const currentStatus = request.status || 'pending';
-                const row = `
-                    <tr>
-                        <td>${request.driver_name}</td>
-                        <td>${request.leave_date}</td>
-                        <td>${request.reason || 'No reason provided'}</td>
-                        <td><span class="status-badge ${currentStatus}">${currentStatus}</span></td>
-                        <td>
-                            ${currentStatus === 'pending' ? `
-                                <button class="btn approve" onclick="updateStatus('${request.id}', 'approved')">Approve</button>
-                                <button class="btn reject" onclick="updateStatus('${request.id}', 'rejected')">Reject</button>
-                            ` : '--'}
-                        </td>
-                    </tr>
-                `;
-                tableBody.innerHTML += row;
-            });
-        }
+        // Sorting by date (newest first)
+        data.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+        data.forEach(request => {
+            const currentStatus = request.status || 'pending';
+            const row = document.createElement('tr');
+            
+            row.innerHTML = `
+                <td style="font-weight: 600; text-transform: uppercase;">${request.driverName || request.driver_name}</td>
+                <td>${request.leaveDate || request.leave_date}</td>
+                <td style="font-size: 14px; color: #475569;">${request.reason || 'No reason provided'}</td>
+                <td><span class="status-badge ${currentStatus}">${currentStatus}</span></td>
+                <td>
+                    ${currentStatus === 'pending' ? `
+                        <button class="btn approve" onclick="updateStatus('${request.id}', 'approved')">Approve</button>
+                        <button class="btn reject" onclick="updateStatus('${request.id}', 'rejected')">Reject</button>
+                    ` : '<span style="color: #94a3b8; font-size: 12px;">Processed</span>'}
+                </td>
+            `;
+            tableBody.appendChild(row);
+        });
     }
 
-    async function updateStatus(requestId, newStatus) {
-        const { error } = await _supabase
-            .from('leave_requests')
-            .update({ status: newStatus })
-            .eq('id', requestId);
-
-        if (error) {
-            alert('Update failed: ' + error.message);
-        } else {
-            alert('Request ' + newStatus + ' successfully!');
+    // 2. Function to update status in Local Storage
+    function updateStatus(requestId, newStatus) {
+        let data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+        
+        const index = data.findIndex(item => item.id === requestId);
+        
+        if (index !== -1) {
+            data[index].status = newStatus;
+            data[index].updatedAt = new Date().toISOString();
+            
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            
+            // UI Update
             fetchLeaveRequests();
+            console.log(`Request ${requestId} marked as ${newStatus}`);
+        } else {
+            alert('Request not found!');
         }
     }
 
-    fetchLeaveRequests();
+    // Initial load
+    window.onload = fetchLeaveRequests;
 </script>
 
 </body>
 </html>
-
