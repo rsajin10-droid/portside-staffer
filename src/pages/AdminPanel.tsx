@@ -6,65 +6,76 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { useAuth } from '@/contexts/AuthContext';
-import { 
-  getUsers, 
-  getStaffList, 
-  getAttendance, 
-  getJobAllotments, 
-  getLeaveRequests,
-  deactivateUser,
-  type AppUser 
-} from '@/lib/storage';
+import { getUsers, type AppUser } from '@/lib/storage';
+import {
+  fetchAppUsers, fetchDrivers, fetchCounts, syncUserToSupabase, updateUserStatus,
+  subscribeToTable, migrateLocalDataToSupabase, type SupabaseDriver
+} from '@/lib/supabaseData';
 import { useToast } from '@/hooks/use-toast';
-import { Shield, Users, Truck, ClipboardCheck, RefreshCw, Database } from 'lucide-react';
+import { Shield, Users, Truck, ClipboardCheck, RefreshCw, Upload, Database } from 'lucide-react';
 
 export default function AdminPanel() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [appUsers, setAppUsers] = useState<AppUser[]>([]);
-  const [staffCount, setStaffCount] = useState(0);
+  const [drivers, setDrivers] = useState<SupabaseDriver[]>([]);
   const [counts, setCounts] = useState({ attendance: 0, jobs: 0, leave: 0 });
   const [loading, setLoading] = useState(true);
+  const [migrating, setMigrating] = useState(false);
 
-  const fetchData = () => {
+  const fetchData = async () => {
     setLoading(true);
-    // Load users
-    const users = getUsers();
-    setAppUsers(users);
-
-    // Load counts from local storage
-    const staff = getStaffList();
-    const attendance = getAttendance();
-    const jobs = getJobAllotments();
-    const leaves = getLeaveRequests();
-
-    setStaffCount(staff.length);
-    setCounts({
-      attendance: attendance.length,
-      jobs: jobs.length,
-      leave: leaves.length
-    });
-    
+    setAppUsers(getUsers());
+    const [driversData, countsData] = await Promise.all([
+      fetchDrivers(),
+      fetchCounts(),
+    ]);
+    setDrivers(driversData);
+    setCounts(countsData);
     setLoading(false);
   };
 
-  useEffect(() => { 
-    fetchData(); 
+  useEffect(() => { fetchData(); }, []);
+
+  // Real-time subscriptions
+  useEffect(() => {
+    const unsubs = [
+      subscribeToTable('drivers', fetchData),
+      subscribeToTable('attendance', fetchData),
+      subscribeToTable('jobs', fetchData),
+      subscribeToTable('leave_requests', fetchData),
+    ];
+    return () => unsubs.forEach(u => u());
   }, []);
 
-  const handleToggleUser = (u: AppUser) => {
-    // Note: In storage.ts we only have deactivateUser function.
-    // For a simple local toggle, we update the array and save
+  const handleToggleUser = async (u: AppUser) => {
     const users = getUsers();
     const updated = users.map(x =>
       x.id === u.id ? { ...x, deactivated: !u.deactivated } : x
     );
     localStorage.setItem('skl_users', JSON.stringify(updated));
-    
+    await updateUserStatus(u.id, !u.deactivated);
     toast({
       title: u.deactivated ? `${u.displayName} activated` : `${u.displayName} deactivated`,
     });
     setAppUsers(updated);
+  };
+
+  const handleSyncAllUsers = async () => {
+    const users = getUsers();
+    for (const u of users) {
+      await syncUserToSupabase(u);
+    }
+    toast({ title: `${users.length} users synced to database` });
+  };
+
+  const handleMigrateLocalData = async () => {
+    setMigrating(true);
+    await migrateLocalDataToSupabase(user?.displayName || 'Admin');
+    await handleSyncAllUsers();
+    toast({ title: 'All local data migrated to database successfully' });
+    setMigrating(false);
+    fetchData();
   };
 
   if (user?.username !== 'appadmin') {
@@ -84,97 +95,123 @@ export default function AdminPanel() {
       <div className="space-y-6 max-w-5xl mx-auto">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold flex items-center gap-2">
-            <Shield className="h-6 w-6" /> Admin Panel (Local)
+            <Shield className="h-6 w-6" /> Admin Panel
           </h2>
           <div className="flex gap-2 flex-wrap">
+            <Button variant="outline" size="sm" onClick={handleMigrateLocalData} disabled={migrating}>
+              <Database className={`h-4 w-4 mr-1 ${migrating ? 'animate-spin' : ''}`} /> Migrate Local Data
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleSyncAllUsers}>
+              <Upload className="h-4 w-4 mr-1" /> Sync Users
+            </Button>
             <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
-              <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh Data
+              <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
             </Button>
           </div>
         </div>
 
-        {/* Statistics Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           <Card>
             <CardContent className="p-4 text-center">
               <Users className="h-6 w-6 mx-auto mb-1 text-primary" />
               <p className="text-2xl font-bold">{appUsers.length}</p>
-              <p className="text-xs text-muted-foreground uppercase font-bold">App Users</p>
+              <p className="text-xs text-muted-foreground">App Users</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
               <Truck className="h-6 w-6 mx-auto mb-1 text-primary" />
-              <p className="text-2xl font-bold">{staffCount}</p>
-              <p className="text-xs text-muted-foreground uppercase font-bold">Staff</p>
+              <p className="text-2xl font-bold">{drivers.length}</p>
+              <p className="text-xs text-muted-foreground">Drivers</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
               <ClipboardCheck className="h-6 w-6 mx-auto mb-1 text-primary" />
               <p className="text-2xl font-bold">{counts.attendance}</p>
-              <p className="text-xs text-muted-foreground uppercase font-bold">Attendance</p>
+              <p className="text-xs text-muted-foreground">Attendance</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <Database className="h-6 w-6 mx-auto mb-1 text-primary" />
               <p className="text-2xl font-bold">{counts.jobs}</p>
-              <p className="text-xs text-muted-foreground uppercase font-bold">Jobs</p>
+              <p className="text-xs text-muted-foreground">Jobs</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
-              <Calendar className="h-6 w-6 mx-auto mb-1 text-primary" />
               <p className="text-2xl font-bold">{counts.leave}</p>
-              <p className="text-xs text-muted-foreground uppercase font-bold">Leave Requests</p>
+              <p className="text-xs text-muted-foreground">Leave Requests</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* User Management */}
+        {/* App Users with activate/deactivate */}
         <Card>
-          <CardHeader>
-            <CardTitle>System Users ({appUsers.length})</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle>Supervisor App Users ({appUsers.length})</CardTitle></CardHeader>
           <CardContent>
-            <div className="overflow-auto border rounded-md">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>#</TableHead>
+                  <TableHead>Username</TableHead>
+                  <TableHead>Display Name</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {appUsers.map((u, i) => (
+                  <TableRow key={u.id}>
+                    <TableCell>{i + 1}</TableCell>
+                    <TableCell className="font-medium">{u.username}</TableCell>
+                    <TableCell>{u.displayName}</TableCell>
+                    <TableCell>
+                      {u.deactivated
+                        ? <Badge variant="destructive">Deactivated</Badge>
+                        : <Badge className="bg-green-600 text-white">Active</Badge>}
+                    </TableCell>
+                    <TableCell>
+                      {u.username !== 'appadmin' ? (
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={!u.deactivated}
+                            onCheckedChange={() => handleToggleUser(u)}
+                          />
+                          <span className="text-xs text-muted-foreground">
+                            {u.deactivated ? 'Activate' : 'Deactivate'}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Admin</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+
+        {/* Drivers from Supabase */}
+        <Card>
+          <CardHeader><CardTitle>Drivers in Database ({drivers.length})</CardTitle></CardHeader>
+          <CardContent>
+            <div className="overflow-auto max-h-96">
               <Table>
-                <TableHeader className="bg-muted/50">
+                <TableHeader>
                   <TableRow>
-                    <TableHead className="w-12">#</TableHead>
-                    <TableHead>Username</TableHead>
-                    <TableHead>Display Name</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
+                    <TableHead>#</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Phone</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {appUsers.map((u, i) => (
-                    <TableRow key={u.id}>
-                      <TableCell className="text-xs">{i + 1}</TableCell>
-                      <TableCell className="font-medium">{u.username}</TableCell>
-                      <TableCell>{u.displayName}</TableCell>
-                      <TableCell>
-                        {u.deactivated
-                          ? <Badge variant="destructive">Deactivated</Badge>
-                          : <Badge className="bg-green-600 text-white">Active</Badge>}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {u.username !== 'appadmin' ? (
-                          <div className="flex items-center justify-end gap-2">
-                            <span className="text-[10px] font-bold uppercase text-muted-foreground">
-                              {u.deactivated ? 'Activate' : 'Deactivate'}
-                            </span>
-                            <Switch
-                              checked={!u.deactivated}
-                              onCheckedChange={() => handleToggleUser(u)}
-                            />
-                          </div>
-                        ) : (
-                          <span className="text-xs font-bold text-primary uppercase">System Admin</span>
-                        )}
-                      </TableCell>
+                  {drivers.map((d, i) => (
+                    <TableRow key={d.id || d.phone_number}>
+                      <TableCell>{i + 1}</TableCell>
+                      <TableCell className="font-medium">{d.name}</TableCell>
+                      <TableCell>{d.phone_number}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -184,28 +221,5 @@ export default function AdminPanel() {
         </Card>
       </div>
     </Layout>
-  );
-}
-
-// Simple Calendar icon for the card
-function Calendar({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
-      <line x1="16" y1="2" x2="16" y2="6" />
-      <line x1="8" y1="2" x2="8" y2="6" />
-      <line x1="3" y1="10" x2="21" y2="10" />
-    </svg>
   );
 }
