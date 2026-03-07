@@ -2,50 +2,115 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Leave Request - Driver App</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leave Request - Driver App (Local)</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; background-color: #f4f7f6; }
-        .container { max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        input, textarea { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-        button { width: 100%; padding: 10px; background-color: #1e293b; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        .status { margin-top: 15px; text-align: center; color: #16a34a; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background-color: #f1f5f9; }
+        .container { max-width: 400px; margin: 40px auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #1e293b; margin-top: 0; }
+        label { font-size: 12px; font-weight: bold; color: #64748b; text-transform: uppercase; margin-bottom: 5px; display: block; }
+        input, textarea { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #e2e8f0; border-radius: 6px; box-sizing: border-box; font-size: 15px; }
+        textarea { min-height: 80px; resize: vertical; }
+        input:focus, textarea:focus { outline: none; border-color: #3b82f6; }
+        button { width: 100%; padding: 12px; background-color: #1e293b; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px; transition: background 0.2s; }
+        button:hover { background-color: #334155; }
+        .status { margin-top: 15px; text-align: center; font-weight: 500; min-height: 20px; }
     </style>
 </head>
 <body>
     <div class="container">
         <h2>Submit Leave Request</h2>
-        <input type="text" id="driverName" placeholder="Driver Name">
-        <input type="text" id="mobile" placeholder="Mobile Number">
+        
+        <label for="driverName">Driver Name</label>
+        <input type="text" id="driverName" placeholder="Enter your name">
+        
+        <label for="mobile">Mobile Number</label>
+        <input type="text" id="mobile" placeholder="10 digit number" maxlength="10">
+        
+        <label for="leaveDate">Leave Date</label>
         <input type="date" id="leaveDate">
-        <textarea id="reason" placeholder="Reason for Leave"></textarea>
+        
+        <label for="reason">Reason for Leave</label>
+        <textarea id="reason" placeholder="Briefly explain the reason"></textarea>
+        
         <button onclick="sendRequest()">Submit Request</button>
         <div id="msg" class="status"></div>
     </div>
 
     <script>
-        const supabaseUrl = 'YOUR_SUPABASE_URL'; https://owbsjzczcvfrnldpoaic.supabase.co
-        const supabaseKey = 'YOUR_SUPABASE_ANON_KEY'; sb_publishable_01ukOcIWuYr2RLrxKE1R2w_bc9GHPTQ
-        const supabase = supabase.createClient(supabaseUrl, supabaseKey);
+        // Shared storage key used by the main Staff Management System
+        const STORAGE_KEY = 'skl_leave_requests';
 
-        async function sendRequest() {
-            const name = document.getElementById('driverName').value;
-            const mobile = document.getElementById('mobile').value;
+        /**
+         * Saves the leave request to Local Storage
+         */
+        function sendRequest() {
+            const name = document.getElementById('driverName').value.trim();
+            const mobile = document.getElementById('mobile').value.trim();
             const date = document.getElementById('leaveDate').value;
-            const reason = document.getElementById('reason').value;
+            const reason = document.getElementById('reason').value.trim();
+            const msgElement = document.getElementById('msg');
 
-            const { error } = await supabase
-                .from('leave_requests')
-                .insert([{ driver_name: name, mobile: mobile, leave_date: date, reason: reason }]);
-
-            if (error) {
-                document.getElementById('msg').innerText = "Error: " + error.message;
-            } else {
-                document.getElementById('msg').innerText = "Request submitted successfully!";
-                setTimeout(() => { window.location.href = "index.html"; }, 2000);
+            // Form Validation
+            if (!name || !mobile || !date || !reason) {
+                showStatus("Please fill all fields correctly.", "red");
+                return;
             }
+
+            if (mobile.length !== 10 || isNaN(mobile)) {
+                showStatus("Enter a valid 10-digit mobile number.", "red");
+                return;
+            }
+
+            try {
+                // 1. Get existing requests
+                const existingRequests = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+
+                // 2. Create new request object
+                const newRequest = {
+                    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+                    driverName: name,
+                    mobile: mobile,
+                    leaveDate: date,
+                    reason: reason,
+                    status: 'pending', // Default status
+                    createdAt: new Date().toISOString()
+                };
+
+                // 3. Save back to local storage
+                existingRequests.push(newRequest);
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(existingRequests));
+
+                // 4. Show success and redirect
+                showStatus("Request submitted successfully!", "green");
+                
+                // Clear form
+                document.getElementById('driverName').value = '';
+                document.getElementById('mobile').value = '';
+                document.getElementById('leaveDate').value = '';
+                document.getElementById('reason').value = '';
+
+                // Redirect after a short delay
+                setTimeout(() => { 
+                    // Change this to your actual index page if needed
+                    console.log("Redirecting...");
+                    // window.location.href = "index.html"; 
+                }, 2000);
+
+            } catch (error) {
+                showStatus("Error saving request. Storage might be full.", "red");
+                console.error(error);
+            }
+        }
+
+        /**
+         * Helper to show colored status messages
+         */
+        function showStatus(text, color) {
+            const msgElement = document.getElementById('msg');
+            msgElement.innerText = text;
+            msgElement.style.color = color === "green" ? "#16a34a" : "#dc2626";
         }
     </script>
 </body>
 </html>
-
