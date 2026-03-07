@@ -13,7 +13,7 @@ export interface AttendanceRecord {
   staffName: string;
   mobile: string;
   status: 'present' | 'absent' | 'extra_duty' | 'dcd' | 'dcn';
-  subStatus?: 'dcd' | 'dcn' | null;
+  subStatus?: 'dcd' | 'dcn';
   createdAt: string;
   createdBy: string;
 }
@@ -30,15 +30,6 @@ export interface JobAllotmentRecord {
   createdBy: string;
 }
 
-export interface LeaveRequest {
-  id: string;
-  driverName: string;
-  leaveDate: string;
-  reason: string;
-  status: 'pending' | 'approved' | 'rejected';
-  createdAt: string;
-}
-
 export interface AppUser {
   id: string;
   username: string;
@@ -48,11 +39,7 @@ export interface AppUser {
   deactivated?: boolean;
 }
 
-// Vehicles List (T001 to T200)
-export const VEHICLES = Array.from({ length: 200 }, (_, i) => `T${String(i + 1).padStart(3, '0')}`);
-
-// --- Local Storage Helpers ---
-
+// Local Storage Helpers
 const get = <T>(key: string): T[] => {
   try {
     return JSON.parse(localStorage.getItem(key) || '[]');
@@ -67,13 +54,13 @@ const set = <T>(key: string, data: T[]) => {
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-// --- Users Management ---
-
+// Users Management
 export const getUsers = (): AppUser[] => {
   const users = get<AppUser>('skl_users');
   let updated = false;
   const list = [...users];
 
+  // Default admin account
   if (!list.some(u => u.username === 'appadmin')) {
     list.push({ 
       id: uid(), 
@@ -96,14 +83,7 @@ export const addUser = (u: Omit<AppUser, 'id'>): AppUser => {
   return nu;
 };
 
-export const deactivateUser = (id: string, status: boolean) => {
-  const users = getUsers();
-  const updated = users.map(u => u.id === id ? { ...u, deactivated: status } : u);
-  set('skl_users', updated);
-};
-
-// --- Staff Management ---
-
+// Staff Management
 export const getStaffList = (): Staff[] => get<Staff>('skl_staff');
 
 export const addStaff = (s: Omit<Staff, 'id' | 'createdAt'>): Staff | null => {
@@ -114,41 +94,20 @@ export const addStaff = (s: Omit<Staff, 'id' | 'createdAt'>): Staff | null => {
   return ns;
 };
 
-export const updateStaff = (id: string, data: Partial<Staff>) => {
-  const list = getStaffList();
-  set('skl_staff', list.map(s => s.id === id ? { ...s, ...data } : s));
-};
-
 export const deleteStaff = (id: string) => {
   set('skl_staff', getStaffList().filter(s => s.id !== id));
 };
 
-export const importStaffBulk = (items: { name: string; mobile: string }[]): number => {
-  const list = getStaffList();
-  let added = 0;
-  const names = new Set(list.map(s => s.name.toLowerCase()));
-  const newItems: Staff[] = [];
-  for (const item of items) {
-    if (!names.has(item.name.toLowerCase())) {
-      newItems.push({ ...item, id: uid(), createdAt: new Date().toISOString() });
-      names.add(item.name.toLowerCase());
-      added++;
-    }
-  }
-  set('skl_staff', [...list, ...newItems]);
-  return added;
-};
-
-// --- Attendance Management ---
-
+// Attendance Management
 export const getAttendance = (): AttendanceRecord[] => get<AttendanceRecord>('skl_attendance');
 
 export const addAttendance = (r: Omit<AttendanceRecord, 'id' | 'createdAt'>): AttendanceRecord | null => {
   const list = getAttendance();
+  // Duplicate check for same driver, date, and shift
   if (list.some(x => x.date === r.date && x.shift === r.shift && x.staffId === r.staffId)) return null;
   
   const nr = { ...r, id: uid(), createdAt: new Date().toISOString() };
-  set('skl_attendance', [nr, ...list]);
+  set('skl_attendance', [nr, ...list]); // New records on top
   return nr;
 };
 
@@ -161,8 +120,7 @@ export const deleteAttendance = (id: string) => {
   set('skl_attendance', getAttendance().filter(r => r.id !== id));
 };
 
-// --- Job Allotment Management ---
-
+// Job Allotment Management
 export const getJobAllotments = (): JobAllotmentRecord[] => get<JobAllotmentRecord>('skl_jobs');
 
 export const addJobAllotment = (r: Omit<JobAllotmentRecord, 'id' | 'createdAt'>): JobAllotmentRecord | null => {
@@ -178,20 +136,5 @@ export const deleteJobAllotment = (id: string) => {
   set('skl_jobs', getJobAllotments().filter(r => r.id !== id));
 };
 
-export const getLastDriver = (vehicle: string): { staffId: string; staffName: string; mobile: string } | null => {
-  const jobs = getJobAllotments()
-    .filter(j => j.vehicleNumber === vehicle)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  return jobs.length > 0 ? { staffId: jobs[0].staffId, staffName: jobs[0].staffName, mobile: jobs[0].mobile } : null;
-};
-
-// --- Leave Management ---
-
-export const getLeaveRequests = (): LeaveRequest[] => get<LeaveRequest>('skl_leave_requests');
-
-export const updateLeaveStatus = (id: string, status: 'approved' | 'rejected') => {
-  const requests = getLeaveRequests();
-  const updated = requests.map(r => r.id === id ? { ...r, status } : r);
-  set('skl_leave_requests', updated);
-  return true;
-};
+// Vehicles List (T001 to T200)
+export const VEHICLES = Array.from({ length: 200 }, (_, i) => `T${String(i + 1).padStart(3, '0')}`);
