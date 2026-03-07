@@ -47,21 +47,14 @@ export interface SupabaseLeaveRequest {
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 // ─── Helper: checks if user is admin ───
-// Updated to check both username and a potential role field
-export const isAdmin = (username?: string, role?: string) => {
-  return username === 'appadmin' || role === 'admin';
-};
+export const isAdmin = (username?: string) => username === 'appadmin';
 
 // ─── Attendance CRUD ───
-// Fetches attendance based on date, shift and user role
 export const fetchAttendance = async (date: string, shift: string, createdBy?: string, isAdminUser = false) => {
   let query = supabase.from('attendance').select('*').eq('date', date).eq('shift', shift);
-  
-  // If not admin, show only their own entries
   if (!isAdminUser && createdBy) {
     query = query.eq('created_by', createdBy);
   }
-  
   const { data, error } = await query.order('created_at', { ascending: true });
   if (error) { console.error('Fetch attendance error:', error.message); return []; }
   return (data || []) as SupabaseAttendance[];
@@ -69,11 +62,9 @@ export const fetchAttendance = async (date: string, shift: string, createdBy?: s
 
 export const fetchAllAttendance = async (createdBy?: string, isAdminUser = false) => {
   let query = supabase.from('attendance').select('*');
-  
   if (!isAdminUser && createdBy) {
     query = query.eq('created_by', createdBy);
   }
-  
   const { data, error } = await query.order('created_at', { ascending: true });
   if (error) { console.error('Fetch all attendance error:', error.message); return []; }
   return (data || []) as SupabaseAttendance[];
@@ -105,14 +96,11 @@ export const checkAttendanceDuplicate = async (date: string, shift: string, staf
 };
 
 // ─── Jobs CRUD ───
-// Updated fetchJobs to support Admin/Supervisor visibility
 export const fetchJobs = async (date: string, shift: string, createdBy?: string, isAdminUser = false) => {
   let query = supabase.from('jobs').select('*').eq('date', date).eq('shift', shift);
-  
   if (!isAdminUser && createdBy) {
     query = query.eq('created_by', createdBy);
   }
-  
   const { data, error } = await query.order('vehicle_number', { ascending: true });
   if (error) { console.error('Fetch jobs error:', error.message); return []; }
   return (data || []) as SupabaseJob[];
@@ -137,6 +125,21 @@ export const deleteJobRecord = async (id: string) => {
   return !error;
 };
 
+// Check duplicate job (vehicle or staff)
+export const checkJobDuplicate = async (date: string, shift: string, vehicleNumber: string, staffId: string, excludeId?: string) => {
+  let query = supabase.from('jobs').select('id, vehicle_number, staff_id').eq('date', date).eq('shift', shift);
+  const { data } = await query;
+  if (!data) return false;
+  return data.some(j => j.id !== excludeId && (j.vehicle_number === vehicleNumber || j.staff_id === staffId));
+};
+
+// Get last driver for a vehicle
+export const getLastDriverForVehicle = async (vehicle: string) => {
+  const { data } = await supabase.from('jobs').select('staff_id, staff_name, mobile').eq('vehicle_number', vehicle).order('created_at', { ascending: false }).limit(1);
+  if (data && data.length > 0) return data[0];
+  return null;
+};
+
 // ─── Drivers CRUD ───
 export const fetchDrivers = async () => {
   const { data, error } = await supabase.from('drivers').select('*').order('name');
@@ -153,6 +156,25 @@ export const insertDriver = async (name: string, mobile: string) => {
   return data as SupabaseDriver;
 };
 
+export const updateDriver = async (oldMobile: string, name: string, mobile: string) => {
+  const { error } = await supabase.from('drivers').update({ name, phone_number: mobile, password: mobile }).eq('phone_number', oldMobile);
+  if (error) console.error('Update driver error:', error.message);
+  return !error;
+};
+
+export const deleteDriver = async (mobile: string) => {
+  const { error } = await supabase.from('drivers').delete().eq('phone_number', mobile);
+  if (error) console.error('Delete driver error:', error.message);
+  return !error;
+};
+
+export const bulkInsertDrivers = async (items: { name: string; mobile: string }[]) => {
+  const rows = items.map(s => ({ name: s.name, phone_number: s.mobile, password: s.mobile }));
+  const { error } = await supabase.from('drivers').upsert(rows, { onConflict: 'phone_number' });
+  if (error) console.error('Bulk insert drivers error:', error.message);
+  return !error;
+};
+
 // ─── Leave Requests ───
 export const fetchLeaveRequests = async () => {
   const { data, error } = await supabase.from('leave_requests').select('*').order('created_at', { ascending: false });
@@ -160,7 +182,13 @@ export const fetchLeaveRequests = async () => {
   return (data || []) as SupabaseLeaveRequest[];
 };
 
-// ─── App Users Syncing ───
+export const updateLeaveStatus = async (id: string, status: 'approved' | 'rejected') => {
+  const { error } = await supabase.from('leave_requests').update({ status }).eq('id', id);
+  if (error) console.error('Update leave status error:', error.message);
+  return !error;
+};
+
+// ─── App Users ───
 export const fetchAppUsers = async () => {
   const { data, error } = await supabase.from('app_users').select('*').order('created_at', { ascending: true });
   if (error) { console.error('Fetch app users error:', error.message); return []; }
@@ -168,7 +196,6 @@ export const fetchAppUsers = async () => {
 };
 
 export const syncUserToSupabase = async (user: { id: string; username: string; displayName: string; deactivated?: boolean }) => {
-  // Syncing user and ensuring role is maintained or defaulted
   const { error } = await supabase.from('app_users').upsert({
     id: user.id,
     username: user.username,
@@ -176,6 +203,26 @@ export const syncUserToSupabase = async (user: { id: string; username: string; d
     deactivated: user.deactivated || false,
   }, { onConflict: 'id' });
   if (error) console.error('Sync user error:', error.message);
+};
+
+export const updateUserStatus = async (id: string, deactivated: boolean) => {
+  const { error } = await supabase.from('app_users').update({ deactivated }).eq('id', id);
+  if (error) console.error('Update user status error:', error.message);
+  return !error;
+};
+
+// ─── Counts for admin ───
+export const fetchCounts = async () => {
+  const [att, jobs, leave] = await Promise.all([
+    supabase.from('attendance').select('id', { count: 'exact', head: true }),
+    supabase.from('jobs').select('id', { count: 'exact', head: true }),
+    supabase.from('leave_requests').select('id', { count: 'exact', head: true }),
+  ]);
+  return {
+    attendance: att.count || 0,
+    jobs: jobs.count || 0,
+    leave: leave.count || 0,
+  };
 };
 
 // ─── Real-time subscription helper ───
@@ -191,6 +238,7 @@ export const subscribeToTable = (table: string, callback: () => void) => {
 
 // ─── Migrate localStorage to Supabase ───
 export const migrateLocalDataToSupabase = async (createdBy: string) => {
+  // Migrate attendance
   try {
     const localAtt = JSON.parse(localStorage.getItem('skl_attendance') || '[]');
     for (const a of localAtt) {
@@ -209,6 +257,7 @@ export const migrateLocalDataToSupabase = async (createdBy: string) => {
     }
   } catch (e) { console.error('Migrate attendance failed:', e); }
 
+  // Migrate jobs
   try {
     const localJobs = JSON.parse(localStorage.getItem('skl_jobs') || '[]');
     for (const j of localJobs) {
@@ -225,6 +274,13 @@ export const migrateLocalDataToSupabase = async (createdBy: string) => {
     }
   } catch (e) { console.error('Migrate jobs failed:', e); }
 
+  // Migrate staff
+  try {
+    const localStaff = JSON.parse(localStorage.getItem('skl_staff') || '[]');
+    if (localStaff.length > 0) {
+      await bulkInsertDrivers(localStaff.map((s: any) => ({ name: s.name, mobile: s.mobile })));
+    }
+  } catch (e) { console.error('Migrate staff failed:', e); }
+
   console.log('Local data migration complete');
 };
-    
