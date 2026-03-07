@@ -9,8 +9,9 @@ export interface SupabaseAttendance {
   mobile: string;
   status: string;
   sub_status?: string | null;
+  vehicle_number?: string | null;
   created_by: string;
-  marked_at?: string; // Automatically managed by Supabase
+  created_at?: string;
 }
 
 export interface SupabaseJob {
@@ -43,7 +44,7 @@ export interface SupabaseLeaveRequest {
 }
 
 /**
- * Check if the user has admin privileges based on username or role
+ * Check if the user has admin privileges
  */
 export const isAdmin = (username?: string, role?: string) => {
   return username === 'appadmin' || role === 'admin';
@@ -53,15 +54,14 @@ export const isAdmin = (username?: string, role?: string) => {
  * ATTENDANCE MODULE
  */
 
-export const fetchAttendance = async (date: string, shift: string, username?: string, isAdminUser = false) => {
+export const fetchAttendance = async (date: string, shift: string, createdBy?: string, isAdminUser = false) => {
   let query = supabase.from('attendance').select('*').eq('date', date).eq('shift', shift);
   
-  // Filter by creator if the user is not an admin
-  if (!isAdminUser && username) {
-    query = query.eq('created_by', username);
+  if (!isAdminUser && createdBy) {
+    query = query.eq('created_by', createdBy);
   }
   
-  const { data, error } = await query.order('marked_at', { ascending: true });
+  const { data, error } = await query.order('created_at', { ascending: true });
   if (error) { 
     console.error('Fetch attendance error:', error.message); 
     return []; 
@@ -69,7 +69,7 @@ export const fetchAttendance = async (date: string, shift: string, username?: st
   return (data || []) as SupabaseAttendance[];
 };
 
-export const insertAttendance = async (record: Omit<SupabaseAttendance, 'id' | 'marked_at'>) => {
+export const insertAttendance = async (record: Omit<SupabaseAttendance, 'id' | 'created_at'>) => {
   const { data, error } = await supabase
     .from('attendance')
     .insert([record])
@@ -109,11 +109,11 @@ export const checkAttendanceDuplicate = async (date: string, shift: string, staf
  * JOBS MODULE
  */
 
-export const fetchJobs = async (date: string, shift: string, username?: string, isAdminUser = false) => {
+export const fetchJobs = async (date: string, shift: string, createdBy?: string, isAdminUser = false) => {
   let query = supabase.from('jobs').select('*').eq('date', date).eq('shift', shift);
   
-  if (!isAdminUser && username) {
-    query = query.eq('created_by', username);
+  if (!isAdminUser && createdBy) {
+    query = query.eq('created_by', createdBy);
   }
   
   const { data, error } = await query.order('vehicle_number', { ascending: true });
