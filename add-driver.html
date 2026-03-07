@@ -3,64 +3,106 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SKL Driver Management</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <title>SKL Driver Management - Local Storage</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; background-color: #f4f7f6; }
-        .container { max-width: 400px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin: auto; }
-        input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-        button { width: 100%; padding: 10px; background-color: #1e293b; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background-color: #f1f5f9; }
+        .container { max-width: 400px; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); margin: 50px auto; }
+        h2 { text-align: center; color: #1e293b; margin-top: 0; margin-bottom: 20px; }
+        label { font-size: 12px; font-weight: bold; color: #64748b; text-transform: uppercase; margin-bottom: 5px; display: block; }
+        input { width: 100%; padding: 12px; margin-bottom: 20px; border: 1px solid #e2e8f0; border-radius: 6px; box-sizing: border-box; font-size: 16px; transition: border-color 0.2s; }
+        input:focus { outline: none; border-color: #3b82f6; }
+        button { width: 100%; padding: 12px; background-color: #1e293b; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px; transition: background-color 0.2s; }
         button:hover { background-color: #334155; }
-        .status { margin-top: 15px; font-size: 14px; color: #16a34a; text-align: center; }
+        .status { margin-top: 15px; font-size: 14px; text-align: center; font-weight: 500; min-height: 20px; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h2>Add New Driver</h2>
-    <input type="text" id="driverName" placeholder="Driver Name">
-    <input type="text" id="mobileNumber" placeholder="Mobile Number">
+    
+    <label for="driverName">Driver Name</label>
+    <input type="text" id="driverName" placeholder="Enter full name">
+    
+    <label for="mobileNumber">Mobile Number</label>
+    <input type="text" id="mobileNumber" placeholder="10 digit number" maxlength="10">
+    
     <button onclick="saveDriver()">Add Driver</button>
     <div id="statusMsg" class="status"></div>
 </div>
 
 <script>
-    // Supabase Credentials
-    const SUPABASE_URL = 'https://owbsjzczcvfrnldpoaic.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_01ukOcIWuYr2RLrxKE1R2w_bc9GHPTQ';
-    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // Storage key consistent with the main application
+    const STORAGE_KEY = 'skl_staff';
 
-    async function saveDriver() {
-        const name = document.getElementById('driverName').value;
-        const mobile = document.getElementById('mobileNumber').value;
+    /**
+     * Saves driver data to Local Storage
+     */
+    function saveDriver() {
+        const nameInput = document.getElementById('driverName');
+        const mobileInput = document.getElementById('mobileNumber');
         const statusMsg = document.getElementById('statusMsg');
 
+        const name = nameInput.value.trim();
+        const mobile = mobileInput.value.trim();
+
+        // Basic Validation
         if (!name || !mobile) {
-            alert("Please fill all fields");
+            showStatus("Please fill all fields", "red");
             return;
         }
 
-        statusMsg.innerText = "Saving...";
+        if (mobile.length !== 10 || isNaN(mobile)) {
+            showStatus("Enter a valid 10-digit mobile number", "red");
+            return;
+        }
 
-        // Logic: Saving mobile number as password
-        const { data, error } = await supabase
-            .from('drivers')
-            .insert([
-                { 
-                    name: name, 
-                    phone_number: mobile, 
-                    password: mobile // Phone number is set as password
-                }
-            ]);
+        // 1. Retrieve existing staff from local storage
+        let drivers = [];
+        try {
+            drivers = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+        } catch (e) {
+            drivers = [];
+        }
 
-        if (error) {
-            statusMsg.style.color = "red";
-            statusMsg.innerText = "Error: " + error.message;
-        } else {
-            statusMsg.style.color = "green";
-            statusMsg.innerText = "Driver added! Password is " + mobile;
-            document.getElementById('driverName').value = '';
-            document.getElementById('mobileNumber').value = '';
+        // 2. Check if driver name already exists
+        const exists = drivers.some(d => d.name.toLowerCase() === name.toLowerCase());
+        if (exists) {
+            showStatus("Error: Driver name already exists!", "red");
+            return;
+        }
+
+        // 3. Create new driver object (matching the Staff interface in storage.ts)
+        const newDriver = {
+            id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+            name: name,
+            mobile: mobile,
+            createdAt: new Date().toISOString()
+        };
+
+        // 4. Update the array and save to local storage
+        drivers.push(newDriver);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(drivers));
+
+        // 5. Success UI update
+        showStatus("Driver added locally! Password is " + mobile, "green");
+        
+        // Clear form
+        nameInput.value = '';
+        mobileInput.value = '';
+    }
+
+    /**
+     * Helper to display status messages
+     */
+    function showStatus(message, color) {
+        const statusMsg = document.getElementById('statusMsg');
+        statusMsg.style.color = color === "green" ? "#16a34a" : "#dc2626";
+        statusMsg.innerText = message;
+        
+        // Auto-clear success messages after a delay
+        if (color === "green") {
+            setTimeout(() => { statusMsg.innerText = ""; }, 5000);
         }
     }
 </script>
