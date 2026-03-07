@@ -5,9 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { UserPlus, Loader2, LogIn } from 'lucide-react';
+import { Ship, UserPlus, Loader2, LogIn } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { getUsers, addUser } from '@/lib/storage';
+import { supabase } from '@/lib/supabase';
 import sklLogo from '@/assets/skl-logo.png';
 
 const SPECIAL_CODE = 'SKLD1097';
@@ -19,7 +19,6 @@ export default function Login() {
   const [isRegister, setIsRegister] = useState(false);
   const [regUsername, setRegUsername] = useState('');
   const [regPassword, setRegPassword] = useState('');
-  const [regDisplayName, setRegDisplayName] = useState('');
   const [regCode, setRegCode] = useState('');
   const [loading, setLoading] = useState(false);
   
@@ -27,7 +26,6 @@ export default function Login() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Load saved credentials if 'Remember Me' was checked previously
   useEffect(() => {
     const saved = localStorage.getItem('skl_remember');
     if (saved) {
@@ -48,7 +46,7 @@ export default function Login() {
     
     setLoading(true);
     try {
-      // Calling the login function from AuthContext which now uses local storage
+      // AuthContext-ലെ ലോഗിൻ ഫംഗ്ഷൻ വിളിക്കുന്നു
       const success = await login(username.trim(), password, 'day');
       
       if (success) {
@@ -62,7 +60,7 @@ export default function Login() {
       } else {
         toast({ 
           title: 'Login Failed', 
-          description: 'Invalid username or password.', 
+          description: 'Invalid credentials or account not approved.', 
           variant: 'destructive' 
         });
       }
@@ -76,7 +74,7 @@ export default function Login() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!regUsername.trim() || !regPassword.trim() || !regCode.trim() || !regDisplayName.trim()) {
+    if (!regUsername.trim() || !regPassword.trim() || !regCode.trim()) {
       return toast({ title: 'Error', description: 'Please fill all fields', variant: 'destructive' });
     }
     
@@ -89,30 +87,33 @@ export default function Login() {
     }
 
     setLoading(true);
+    const email = `${regUsername.trim().toLowerCase()}@skl.com`;
 
     try {
-      // Check if username already exists in local storage
-      const users = getUsers();
-      if (users.some(u => u.username === regUsername.trim())) {
-        throw new Error('Username already exists');
-      }
-
-      // Add new supervisor to local storage
-      addUser({
-        username: regUsername.trim(),
+      // Supabase Auth വഴി പുതിയ യൂസറെ ഉണ്ടാക്കുന്നു
+      const { data, error } = await supabase.auth.signUp({
+        email: email,
         password: regPassword,
-        displayName: regDisplayName.trim(),
-        role: 'supervisor'
+        options: {
+          data: {
+            username: regUsername.trim(),
+            display_name: regUsername.trim(),
+            special_code: regCode
+          }
+        }
       });
 
-      toast({ 
-        title: 'Registered!', 
-        description: 'Account created. You can now login.' 
-      });
-      setIsRegister(false);
-      setUsername(regUsername);
-      setPassword(regPassword);
-      
+      if (error) throw error;
+
+      if (data.user) {
+        toast({ 
+          title: 'Registered!', 
+          description: 'Account created. You can now login.' 
+        });
+        setIsRegister(false);
+        setUsername(regUsername);
+        setPassword(regPassword);
+      }
     } catch (err: any) {
       toast({ title: 'Registration Failed', description: err.message, variant: 'destructive' });
     } finally {
@@ -123,7 +124,7 @@ export default function Login() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-4">
       <div className="mb-8 text-center">
-        <img src={sklLogo} alt="SKL Logo" className="w-32 md:w-40 mx-auto drop-shadow-md mb-2" />
+        <img src={sklLogo} alt="SKL Logo" className="w-32 md:w-40 mx-auto drop-shadow-md mb-4" />
         <h1 className="text-xl font-bold text-primary">Sri Kamakshithai Logistics</h1>
       </div>
 
@@ -170,7 +171,7 @@ export default function Login() {
                 />
                 <Label htmlFor="remember" className="text-sm font-normal cursor-pointer">Remember me</Label>
               </div>
-              <Button type="submit" className="w-full h-11" disabled={loading}>
+              <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <LogIn className="mr-2 h-4 w-4" />}
                 Login
               </Button>
@@ -187,20 +188,11 @@ export default function Login() {
           ) : (
             <form onSubmit={handleRegister} className="space-y-4">
               <div className="space-y-2">
-                <Label>Full Name</Label>
-                <Input 
-                  value={regDisplayName} 
-                  onChange={e => setRegDisplayName(e.target.value)} 
-                  placeholder="Your Name"
-                  required 
-                />
-              </div>
-              <div className="space-y-2">
                 <Label>Username</Label>
                 <Input 
                   value={regUsername} 
                   onChange={e => setRegUsername(e.target.value)} 
-                  placeholder="Choose username"
+                  placeholder="Set your login username"
                   required 
                 />
               </div>
@@ -210,7 +202,7 @@ export default function Login() {
                   type="password" 
                   value={regPassword} 
                   onChange={e => setRegPassword(e.target.value)} 
-                  placeholder="Min. 6 characters"
+                  placeholder="Minimum 6 characters"
                   required 
                 />
               </div>
@@ -219,12 +211,12 @@ export default function Login() {
                 <Input 
                   value={regCode} 
                   onChange={e => setRegCode(e.target.value)} 
-                  placeholder="Registration code"
+                  placeholder="Enter registration code"
                   className="border-blue-300 focus:border-blue-500"
                   required 
                 />
               </div>
-              <Button type="submit" className="w-full h-11 bg-blue-600 hover:bg-blue-700" disabled={loading}>
+              <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700" disabled={loading}>
                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
                 Register Supervisor
               </Button>
