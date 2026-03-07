@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,8 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
-import { getStaffList } from '@/lib/storage';
-import { Plus, Search, Paperclip, Trash2, BookOpen, AlertCircle } from 'lucide-react';
+import { getStaffList, type Staff } from '@/lib/storage';
+import { Plus, Search, Paperclip, Trash2 } from 'lucide-react';
 
 interface LogEntry {
   id: string;
@@ -25,46 +25,34 @@ interface LogEntry {
 
 const LOG_TYPES = ['Late Coming', 'Early Leaving', 'Misconduct', 'Vehicle Issue', 'Accident', 'Other'];
 
-// Helper to manage log data in local storage
 const getLogEntries = (): LogEntry[] => {
-  try {
-    return JSON.parse(localStorage.getItem('skl_logbook') || '[]');
-  } catch {
-    return [];
-  }
+  try { return JSON.parse(localStorage.getItem('skl_logbook') || '[]'); } catch { return []; }
 };
-
-const saveLogEntries = (entries: LogEntry[]) => {
-  localStorage.setItem('skl_logbook', JSON.stringify(entries));
-};
+const saveLogEntries = (entries: LogEntry[]) => localStorage.setItem('skl_logbook', JSON.stringify(entries));
 
 export default function DriverLogbook() {
   const { user } = useAuth();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const [staffList, setStaffList] = useState(getStaffList().sort((a, b) => a.name.localeCompare(b.name)));
+  const staffList = getStaffList().sort((a, b) => a.name.localeCompare(b.name));
+
+  // Selected driver for viewing & creating
   const [driverSearch, setDriverSearch] = useState('');
   const [selectedDriver, setSelectedDriver] = useState('');
   const [selectedDriverName, setSelectedDriverName] = useState('');
 
+  // Create entry state
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [entryType, setEntryType] = useState('Late Coming');
   const [message, setMessage] = useState('');
   const [imageData, setImageData] = useState<string | undefined>();
   const [showForm, setShowForm] = useState(false);
-  const [entries, setEntries] = useState<LogEntry[]>([]);
 
-  // Load entries on mount
-  useEffect(() => {
-    setEntries(getLogEntries());
-  }, []);
+  const [entries, setEntries] = useState<LogEntry[]>(getLogEntries());
 
-  const filteredStaff = staffList.filter(s => 
-    s.name.toLowerCase().includes(driverSearch.toLowerCase()) || 
-    s.mobile.includes(driverSearch)
-  );
+  const filteredStaff = staffList.filter(s => s.name.toLowerCase().includes(driverSearch.toLowerCase()));
 
+  // Show only selected driver's entries
   const displayEntries = useMemo(() => {
     if (!selectedDriver) return [];
     return entries.filter(e => e.staffId === selectedDriver).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -73,13 +61,10 @@ export default function DriverLogbook() {
   const handleImageAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
-    // Check file size (limiting to 1MB for local storage safety)
-    if (file.size > 1 * 1024 * 1024) {
-      toast({ title: 'Image too large', description: 'Please use an image under 1MB', variant: 'destructive' });
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: 'Image too large (max 5MB)', variant: 'destructive' });
       return;
     }
-
     const reader = new FileReader();
     reader.onload = () => setImageData(reader.result as string);
     reader.readAsDataURL(file);
@@ -87,27 +72,26 @@ export default function DriverLogbook() {
 
   const handleSave = () => {
     if (!selectedDriver || !message.trim()) {
-      toast({ title: 'Missing Information', description: 'Select a driver and enter a message', variant: 'destructive' });
+      toast({ title: 'Select driver and enter message', variant: 'destructive' });
       return;
     }
-
+    const staff = staffList.find(s => s.id === selectedDriver);
+    if (!staff) return;
     const entry: LogEntry = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
       date,
-      staffId: selectedDriver,
-      staffName: selectedDriverName,
+      staffId: staff.id,
+      staffName: staff.name,
       type: entryType,
       message: message.trim(),
       imageData,
       createdAt: new Date().toISOString(),
-      createdBy: user?.displayName || user?.username || 'Supervisor',
+      createdBy: user?.displayName || '',
     };
-
-    const updated = [entry, ...entries];
+    const updated = [...entries, entry];
     saveLogEntries(updated);
     setEntries(updated);
-    
-    toast({ title: 'Saved', description: 'Log entry added successfully' });
+    toast({ title: 'Log entry saved' });
     setMessage('');
     setImageData(undefined);
     setShowForm(false);
@@ -122,161 +106,128 @@ export default function DriverLogbook() {
 
   return (
     <Layout>
-      <div className="space-y-4 max-w-4xl mx-auto px-2">
-        <div className="flex items-center gap-3 mb-6">
-          <BookOpen className="h-7 w-7 text-primary" />
-          <h2 className="text-2xl font-bold">Driver Logbook (Staff Record)</h2>
-        </div>
+      <div className="space-y-4 max-w-4xl mx-auto px-1">
+        <h2 className="text-xl md:text-2xl font-bold">Driver Logbook</h2>
 
-        {/* Driver Selection Card */}
-        <Card className="shadow-sm">
-          <CardHeader className="pb-3 border-b">
-            <CardTitle className="text-sm font-bold uppercase text-muted-foreground">Select Driver</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-4 space-y-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search driver by name or phone..."
-                value={driverSearch}
-                onChange={e => {
-                  setDriverSearch(e.target.value);
-                  if (!e.target.value) { setSelectedDriver(''); setSelectedDriverName(''); }
-                }}
-                className="pl-9 h-11"
-              />
-              {driverSearch && !selectedDriver && (
-                <div className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-xl max-h-60 overflow-auto">
-                  {filteredStaff.map(s => (
-                    <div 
-                      key={s.id} 
-                      className="px-4 py-3 hover:bg-primary/5 cursor-pointer border-b last:border-0 flex justify-between"
-                      onClick={() => { 
-                        setSelectedDriver(s.id); 
-                        setDriverSearch(s.name); 
-                        setSelectedDriverName(s.name); 
-                      }}
-                    >
-                      <span className="font-bold uppercase text-sm">{s.name}</span>
-                      <span className="text-xs text-muted-foreground">{s.mobile}</span>
-                    </div>
-                  ))}
-                  {filteredStaff.length === 0 && <div className="p-4 text-center text-muted-foreground">No driver found</div>}
-                </div>
-              )}
+        {/* Driver Selection */}
+        <Card>
+          <CardHeader className="pb-3"><CardTitle className="text-base">Select Driver</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex gap-2 items-end">
+              <div className="flex-1 space-y-1">
+                <Input
+                  placeholder="Search driver..."
+                  value={driverSearch}
+                  onChange={e => { setDriverSearch(e.target.value); if (!e.target.value) { setSelectedDriver(''); setSelectedDriverName(''); } }}
+                  className="h-9 text-sm"
+                />
+                {driverSearch && !selectedDriver && (
+                  <div className="border rounded-md max-h-40 overflow-auto bg-popover z-50 relative shadow-lg">
+                    {filteredStaff.map(s => (
+                      <div key={s.id} className="px-3 py-2 hover:bg-muted cursor-pointer text-sm"
+                        onClick={() => { setSelectedDriver(s.id); setDriverSearch(s.name); setSelectedDriverName(s.name); }}>
+                        {s.name} - {s.mobile}
+                      </div>
+                    ))}
+                    {filteredStaff.length === 0 && <div className="px-3 py-2 text-muted-foreground text-sm">No driver found</div>}
+                  </div>
+                )}
+              </div>
             </div>
+            {selectedDriver && (
+              <p className="text-xs text-primary font-medium">Viewing logbook for: {selectedDriverName}</p>
+            )}
           </CardContent>
         </Card>
 
+        {/* New Entry - only when driver is selected */}
         {selectedDriver && (
-          <>
-            <div className="flex justify-between items-center">
-              <Badge variant="secondary" className="px-3 py-1 uppercase">{selectedDriverName}</Badge>
-              <Button size="sm" onClick={() => setShowForm(!showForm)} className="gap-2">
-                {showForm ? 'Cancel' : <><Plus className="h-4 w-4" /> Add New Entry</>}
-              </Button>
-            </div>
+          <div className="flex justify-end">
+            <Button size="sm" onClick={() => setShowForm(!showForm)}>
+              <Plus className="h-4 w-4 mr-1" />{showForm ? 'Cancel' : 'New Entry'}
+            </Button>
+          </div>
+        )}
 
-            {showForm && (
-              <Card className="border-primary/20 shadow-md animate-in fade-in slide-in-from-top-2">
-                <CardContent className="pt-6 space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <Label className="text-xs font-bold uppercase">Incident Date</Label>
-                      <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs font-bold uppercase">Category</Label>
-                      <select 
-                        className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                        value={entryType} 
-                        onChange={e => setEntryType(e.target.value)}
-                      >
-                        {LOG_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs font-bold uppercase">Details</Label>
-                    <Textarea 
-                      placeholder="Explain the incident or issue..." 
-                      value={message} 
-                      onChange={e => setMessage(e.target.value)} 
-                      className="min-h-[100px]"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between border-t pt-4">
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                        <Paperclip className="h-4 w-4 mr-1" /> Attachment
-                      </Button>
-                      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageAttach} />
-                      {imageData && (
-                        <div className="relative group">
-                          <img src={imageData} alt="preview" className="h-10 w-10 object-cover rounded border" />
-                          <button 
-                            onClick={() => setImageData(undefined)}
-                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5"
-                          >✕</button>
-                        </div>
-                      )}
-                    </div>
-                    <Button onClick={handleSave}>Save Record</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Entry List */}
-            <div className="space-y-3">
-              {displayEntries.length === 0 ? (
-                <div className="text-center py-12 bg-muted/20 rounded-xl border border-dashed">
-                  <AlertCircle className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                  <p className="text-sm text-muted-foreground">No records found for this driver.</p>
+        {showForm && selectedDriver && (
+          <Card className="border-primary/30">
+            <CardHeader className="pb-3"><CardTitle className="text-base">Create Entry for {selectedDriverName}</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Date</Label>
+                  <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="h-9 text-sm" />
                 </div>
-              ) : (
-                displayEntries.map(entry => (
-                  <Card key={entry.id} className="overflow-hidden hover:shadow-md transition-shadow">
-                    <CardContent className="p-4 space-y-3">
-                      <div className="flex justify-between items-start">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Badge className="bg-primary/10 text-primary border-none text-[10px] uppercase font-bold">
-                            {entry.type}
-                          </Badge>
-                          <span className="text-xs text-muted-foreground font-medium">{entry.date}</span>
-                        </div>
-                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleDelete(entry.id)}>
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                <div className="space-y-1">
+                  <Label className="text-xs">Type</Label>
+                  <select className="w-full h-9 text-sm rounded-md border border-input bg-background px-3" value={entryType} onChange={e => setEntryType(e.target.value)}>
+                    {LOG_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Message</Label>
+                <Textarea placeholder="Enter details..." value={message} onChange={e => setMessage(e.target.value)} className="text-sm min-h-[80px]" />
+              </div>
+              <div className="flex items-center gap-3">
+                <Button size="sm" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                  <Paperclip className="h-4 w-4 mr-1" />Attach Image
+                </Button>
+                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageAttach} />
+                {imageData && (
+                  <div className="flex items-center gap-2">
+                    <img src={imageData} alt="attachment" className="h-10 w-10 object-cover rounded border" />
+                    <Button size="sm" variant="ghost" onClick={() => setImageData(undefined)}>✕</Button>
+                  </div>
+                )}
+              </div>
+              <Button size="sm" onClick={handleSave}>Save Entry</Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Entries for selected driver */}
+        {selectedDriver && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Log Entries for {selectedDriverName} ({displayEntries.length})</CardTitle>
+            </CardHeader>
+            <CardContent className="px-2 md:px-6">
+              <div className="space-y-3">
+                {displayEntries.map(entry => (
+                  <div key={entry.id} className="border rounded-lg p-3 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant="outline" className="text-[10px]">{entry.type}</Badge>
+                        <span className="text-[10px] text-muted-foreground">{entry.date}</span>
                       </div>
-                      <p className="text-sm leading-relaxed">{entry.message}</p>
-                      {entry.imageData && (
-                        <div className="mt-2">
-                          <img 
-                            src={entry.imageData} 
-                            alt="Log attachment" 
-                            className="max-h-60 rounded-lg border cursor-pointer hover:opacity-90"
-                            onClick={() => window.open(entry.imageData, '_blank')} 
-                          />
-                        </div>
-                      )}
-                      <div className="pt-2 border-t flex justify-between items-center">
-                        <span className="text-[10px] text-muted-foreground">Recorded by: {entry.createdBy}</span>
-                        <span className="text-[10px] text-muted-foreground">{new Date(entry.createdAt).toLocaleTimeString()}</span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              )}
-            </div>
-          </>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(entry.id)}>
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-foreground/80">{entry.message}</p>
+                    {entry.imageData && (
+                      <img src={entry.imageData} alt="attachment" className="max-h-40 rounded-md border cursor-pointer"
+                        onClick={() => window.open(entry.imageData, '_blank')} />
+                    )}
+                    <p className="text-[10px] text-muted-foreground">By {entry.createdBy} • {new Date(entry.createdAt).toLocaleString()}</p>
+                  </div>
+                ))}
+                {displayEntries.length === 0 && (
+                  <p className="text-center text-muted-foreground text-sm py-8">No log entries for this driver</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {!selectedDriver && (
-          <div className="py-20 text-center space-y-3 opacity-50">
-            <Search className="h-12 w-12 mx-auto text-muted-foreground" />
-            <p className="text-muted-foreground">Search and select a driver to view or add log entries.</p>
-          </div>
+          <Card>
+            <CardContent className="py-12 text-center">
+              <Search className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+              <p className="text-sm text-muted-foreground">Select a driver to view their logbook</p>
+            </CardContent>
+          </Card>
         )}
       </div>
     </Layout>
