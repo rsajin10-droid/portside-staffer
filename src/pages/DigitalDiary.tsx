@@ -8,7 +8,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { format } from 'date-fns';
-import { CalendarIcon, Save, Trash2, BookOpenText, History } from 'lucide-react';
+import { CalendarIcon, Save, Trash2, BookOpenText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface DiaryEntry {
@@ -22,18 +22,10 @@ interface DiaryEntry {
 
 const STORAGE_KEY = 'skl_diary';
 
-// Helper functions for Local Storage
 const getEntries = (): DiaryEntry[] => {
-  try { 
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); 
-  } catch { 
-    return []; 
-  }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
 };
-
-const saveEntries = (entries: DiaryEntry[]) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-};
+const saveEntries = (entries: DiaryEntry[]) => localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
 
 export default function DigitalDiary() {
   const { user } = useAuth();
@@ -45,12 +37,11 @@ export default function DigitalDiary() {
 
   const dateKey = format(selectedDate, 'yyyy-MM-dd');
 
-  // Load all entries on mount
   useEffect(() => {
-    setEntries(getEntries());
+    const all = getEntries();
+    setEntries(all);
   }, []);
 
-  // Update content when selected date changes
   useEffect(() => {
     const entry = entries.find(e => e.date === dateKey);
     setExistingEntry(entry || null);
@@ -59,78 +50,69 @@ export default function DigitalDiary() {
 
   const handleSave = () => {
     if (!content.trim()) {
-      toast({ 
-        title: 'Empty Note', 
-        description: 'Please write something before saving.', 
-        variant: 'destructive' 
-      });
+      toast({ title: 'Empty note', description: 'Please write something before saving.', variant: 'destructive' });
       return;
     }
-
     const all = getEntries();
     const now = new Date().toISOString();
-
     if (existingEntry) {
-      const updated = all.map(e => 
-        e.id === existingEntry.id ? { ...e, content: content.trim(), updatedAt: now } : e
-      );
+      const updated = all.map(e => e.id === existingEntry.id ? { ...e, content: content.trim(), updatedAt: now } : e);
       saveEntries(updated);
       setEntries(updated);
-      toast({ title: 'Success', description: 'Diary entry updated.' });
+      toast({ title: 'Note updated', description: `Diary entry for ${format(selectedDate, 'dd MMM yyyy')} updated.` });
     } else {
       const newEntry: DiaryEntry = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
         date: dateKey,
         content: content.trim(),
-        createdBy: user?.username || 'user',
+        createdBy: user?.id || '',
         createdAt: now,
         updatedAt: now,
       };
-      const updated = [newEntry, ...all];
+      const updated = [...all, newEntry];
       saveEntries(updated);
       setEntries(updated);
-      toast({ title: 'Success', description: 'Diary entry saved.' });
+      toast({ title: 'Note saved', description: `Diary entry for ${format(selectedDate, 'dd MMM yyyy')} saved.` });
     }
   };
 
   const handleDelete = () => {
-    const updated = entries.filter(e => e.id !== existingEntry?.id);
+    if (!existingEntry) return;
+    const updated = getEntries().filter(e => e.id !== existingEntry.id);
     saveEntries(updated);
     setEntries(updated);
     setContent('');
-    toast({ title: 'Deleted', description: 'Diary entry removed.' });
+    toast({ title: 'Note deleted', description: `Diary entry for ${format(selectedDate, 'dd MMM yyyy')} removed.` });
   };
 
-  // Dates to highlight on calendar
-  const entryDates = entries.map(e => new Date(e.date));
+  // Dates that have entries (for calendar highlighting)
+  const entryDates = entries.map(e => new Date(e.date + 'T00:00:00'));
 
-  // Sort entries for the sidebar
-  const recentEntries = [...entries]
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 10);
+  // Recent entries for quick access
+  const recentEntries = [...entries].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10);
 
   return (
     <Layout>
-      <div className="space-y-4 max-w-6xl mx-auto px-2">
-        <div className="flex items-center gap-3 mb-2">
-          <BookOpenText className="h-7 w-7 text-primary" />
-          <h1 className="text-2xl font-bold">Digital Diary (Supervisor Notes)</h1>
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <BookOpenText className="h-6 w-6 text-primary" />
+          <h1 className="text-2xl font-bold">Digital Diary</h1>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Editor Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Main editor */}
           <div className="lg:col-span-2 space-y-4">
-            <Card className="shadow-sm">
-              <CardHeader className="pb-4 border-b bg-muted/20">
-                <div className="flex items-center justify-between flex-wrap gap-3">
-                  <CardTitle className="text-lg font-bold">
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <CardTitle className="text-lg">
                     {format(selectedDate, 'EEEE, dd MMMM yyyy')}
                   </CardTitle>
                   <Popover>
                     <PopoverTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-9 border-primary/20">
-                        <CalendarIcon className="h-4 w-4 mr-2 text-primary" />
-                        Select Date
+                      <Button variant="outline" size="sm" className={cn("justify-start text-left font-normal")}>
+                        <CalendarIcon className="h-4 w-4 mr-2" />
+                        Change Date
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="end">
@@ -138,26 +120,33 @@ export default function DigitalDiary() {
                         mode="single"
                         selected={selectedDate}
                         onSelect={(d) => d && setSelectedDate(d)}
-                        className="p-3"
+                        modifiers={{ hasEntry: entryDates }}
+                        modifiersStyles={{ hasEntry: { fontWeight: 'bold', textDecoration: 'underline' } }}
+                        className={cn("p-3 pointer-events-auto")}
                       />
                     </PopoverContent>
                   </Popover>
                 </div>
+                {existingEntry && (
+                  <p className="text-xs text-muted-foreground">
+                    Last edited: {format(new Date(existingEntry.updatedAt), 'dd MMM yyyy, hh:mm a')}
+                  </p>
+                )}
               </CardHeader>
-              <CardContent className="pt-6 space-y-4">
+              <CardContent className="space-y-3">
                 <Textarea
-                  placeholder="Note down daily events, supervisor instructions, or truck-related issues..."
+                  placeholder="Write your daily notes here..."
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  className="min-h-[350px] text-base leading-relaxed p-4 focus-visible:ring-primary"
+                  className="min-h-[250px] resize-y"
                 />
-                <div className="flex gap-3 pt-2">
-                  <Button onClick={handleSave} className="gap-2 px-6">
+                <div className="flex gap-2">
+                  <Button onClick={handleSave} className="gap-2">
                     <Save className="h-4 w-4" />
-                    {existingEntry ? 'Update Note' : 'Save Note'}
+                    {existingEntry ? 'Update' : 'Save'}
                   </Button>
                   {existingEntry && (
-                    <Button variant="outline" onClick={handleDelete} className="gap-2 text-destructive border-destructive/20 hover:bg-destructive/5">
+                    <Button variant="destructive" onClick={handleDelete} className="gap-2">
                       <Trash2 className="h-4 w-4" />
                       Delete
                     </Button>
@@ -167,37 +156,27 @@ export default function DigitalDiary() {
             </Card>
           </div>
 
-          {/* Recent Sidebar Section */}
-          <div className="space-y-4">
-            <Card className="shadow-sm sticky top-4">
-              <CardHeader className="pb-3 border-b">
-                <CardTitle className="text-sm font-bold uppercase text-muted-foreground flex items-center gap-2">
-                  <History className="h-4 w-4" /> Recent Entries
-                </CardTitle>
+          {/* Recent entries sidebar */}
+          <div>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Recent Notes</CardTitle>
               </CardHeader>
-              <CardContent className="pt-4 space-y-3">
+              <CardContent className="space-y-2">
                 {recentEntries.length === 0 ? (
-                  <div className="text-center py-10 text-muted-foreground text-sm">
-                    No diary entries recorded.
-                  </div>
+                  <p className="text-sm text-muted-foreground">No diary entries yet.</p>
                 ) : (
                   recentEntries.map(entry => (
                     <button
                       key={entry.id}
-                      onClick={() => setSelectedDate(new Date(entry.date))}
+                      onClick={() => setSelectedDate(new Date(entry.date + 'T00:00:00'))}
                       className={cn(
-                        "w-full text-left p-3 rounded-lg border transition-all hover:shadow-sm",
-                        entry.date === dateKey 
-                          ? "bg-primary/5 border-primary ring-1 ring-primary/20" 
-                          : "bg-background hover:border-primary/30"
+                        "w-full text-left p-2 rounded-md border transition-colors hover:bg-accent",
+                        entry.date === dateKey && "bg-accent border-primary"
                       )}
                     >
-                      <p className="text-xs font-bold text-primary mb-1">
-                        {format(new Date(entry.date), 'dd MMM yyyy')}
-                      </p>
-                      <p className="text-xs text-muted-foreground line-clamp-2">
-                        {entry.content}
-                      </p>
+                      <p className="text-xs font-medium">{format(new Date(entry.date + 'T00:00:00'), 'dd MMM yyyy, EEEE')}</p>
+                      <p className="text-xs text-muted-foreground truncate">{entry.content}</p>
                     </button>
                   ))
                 )}
