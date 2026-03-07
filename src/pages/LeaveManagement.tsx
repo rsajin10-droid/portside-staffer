@@ -6,28 +6,29 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { Calendar, CheckCircle, XCircle, RefreshCw, Inbox } from 'lucide-react';
-import { getLeaveRequests, updateLeaveStatus, type LeaveRequest } from '@/lib/storage';
+import { fetchLeaveRequests, updateLeaveStatus, subscribeToTable, type SupabaseLeaveRequest } from '@/lib/supabaseData';
 
 export default function LeaveManagement() {
-  const [requests, setRequests] = useState<LeaveRequest[]>([]);
+  const [requests, setRequests] = useState<SupabaseLeaveRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const refresh = () => {
+  const refresh = async () => {
     setLoading(true);
-    // Fetch data from local storage instead of Supabase
-    const data = getLeaveRequests();
+    const data = await fetchLeaveRequests();
     setRequests(data);
     setLoading(false);
   };
 
   useEffect(() => {
     refresh();
+    const unsub = subscribeToTable('leave_requests', refresh);
+    return unsub;
   }, []);
 
-  const handleUpdateStatus = (id: string, status: 'approved' | 'rejected') => {
-    const success = updateLeaveStatus(id, status);
-    if (!success) {
+  const handleUpdateStatus = async (id: string, status: 'approved' | 'rejected') => {
+    const ok = await updateLeaveStatus(id, status);
+    if (!ok) {
       toast({ title: 'Update failed', variant: 'destructive' });
     } else {
       toast({ title: `Leave ${status} successfully` });
@@ -39,7 +40,7 @@ export default function LeaveManagement() {
     switch (status) {
       case 'approved': return <Badge className="bg-green-600 hover:bg-green-700 text-white">Approved</Badge>;
       case 'rejected': return <Badge variant="destructive">Rejected</Badge>;
-      default: return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Pending</Badge>;
+      default: return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pending</Badge>;
     }
   };
 
@@ -52,7 +53,7 @@ export default function LeaveManagement() {
       <div className="space-y-6 max-w-4xl mx-auto">
         <div className="flex items-center justify-between">
           <h2 className="text-2xl font-bold flex items-center gap-2">
-            <Calendar className="h-6 w-6" /> Leave Management (Local)
+            <Calendar className="h-6 w-6" /> Leave Management
           </h2>
           <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
@@ -63,19 +64,19 @@ export default function LeaveManagement() {
           <Card>
             <CardContent className="p-4 text-center">
               <p className="text-2xl font-bold text-yellow-600">{pending}</p>
-              <p className="text-xs text-muted-foreground uppercase font-bold">Pending</p>
+              <p className="text-xs text-muted-foreground">Pending</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
               <p className="text-2xl font-bold text-green-600">{approved}</p>
-              <p className="text-xs text-muted-foreground uppercase font-bold">Approved</p>
+              <p className="text-xs text-muted-foreground">Approved</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4 text-center">
               <p className="text-2xl font-bold text-destructive">{rejected}</p>
-              <p className="text-xs text-muted-foreground uppercase font-bold">Rejected</p>
+              <p className="text-xs text-muted-foreground">Rejected</p>
             </CardContent>
           </Card>
         </div>
@@ -91,38 +92,38 @@ export default function LeaveManagement() {
                 <p>No leave requests yet</p>
               </div>
             ) : (
-              <div className="overflow-auto border rounded-md max-h-[60vh]">
+              <div className="overflow-auto max-h-[60vh]">
                 <Table>
-                  <TableHeader className="bg-muted/50">
+                  <TableHeader>
                     <TableRow>
-                      <TableHead className="w-12">#</TableHead>
+                      <TableHead>#</TableHead>
                       <TableHead>Driver Name</TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Reason</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Action</TableHead>
+                      <TableHead>Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {requests.map((r, i) => (
                       <TableRow key={r.id}>
-                        <TableCell className="text-xs">{i + 1}</TableCell>
-                        <TableCell className="font-bold text-sm uppercase">{r.driverName}</TableCell>
-                        <TableCell className="text-sm">{r.leaveDate}</TableCell>
-                        <TableCell className="max-w-[200px] truncate text-sm">{r.reason || 'No reason'}</TableCell>
+                        <TableCell>{i + 1}</TableCell>
+                        <TableCell className="font-medium">{r.driver_name}</TableCell>
+                        <TableCell>{r.leave_date}</TableCell>
+                        <TableCell className="max-w-[200px] truncate">{r.reason || 'No reason'}</TableCell>
                         <TableCell>{statusBadge(r.status)}</TableCell>
-                        <TableCell className="text-right">
+                        <TableCell>
                           {r.status === 'pending' ? (
-                            <div className="flex justify-end gap-1">
-                              <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-50 h-8" onClick={() => handleUpdateStatus(r.id, 'approved')}>
-                                <CheckCircle className="h-4 w-4" />
+                            <div className="flex gap-1">
+                              <Button size="sm" variant="outline" className="text-green-600 border-green-600 hover:bg-green-50" onClick={() => handleUpdateStatus(r.id, 'approved')}>
+                                <CheckCircle className="h-4 w-4 mr-1" /> Approve
                               </Button>
-                              <Button size="sm" variant="outline" className="text-destructive border-destructive hover:bg-red-50 h-8" onClick={() => handleUpdateStatus(r.id, 'rejected')}>
-                                <XCircle className="h-4 w-4" />
+                              <Button size="sm" variant="outline" className="text-destructive border-destructive hover:bg-red-50" onClick={() => handleUpdateStatus(r.id, 'rejected')}>
+                                <XCircle className="h-4 w-4 mr-1" /> Reject
                               </Button>
                             </div>
                           ) : (
-                            <span className="text-muted-foreground text-xs uppercase font-medium">Closed</span>
+                            <span className="text-muted-foreground text-sm">—</span>
                           )}
                         </TableCell>
                       </TableRow>
