@@ -13,11 +13,14 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getStaffList, getShiftAttendance, addAttendance, updateAttendance, deleteAttendance,
-  getAttendance, type AttendanceRecord, type Staff, VEHICLES
+  getAttendance, type AttendanceRecord, type Staff
 } from '@/lib/storage';
 import { Pencil, Trash2, Download, MessageCircle, Truck } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+
+// വണ്ടി നമ്പറുകൾ ഇവിടെ നേരിട്ട് നൽകുന്നു (Preview Error ഒഴിവാക്കാൻ)
+const VEHICLES = Array.from({ length: 100 }, (_, i) => `T${String(i + 1).padStart(3, '0')}`);
 
 const statusColors: Record<string, string> = {
   present: 'bg-success text-success-foreground',
@@ -149,10 +152,9 @@ export default function Attendance() {
     setStaffSearch(r.staffName); setSelectedVehicle(r.vehicleNumber || '');
   };
 
-  // വാട്ട്‌സ്ആപ്പ് റിപ്പോർട്ടിൽ വണ്ടി നമ്പർ ഉള്ളവർ മാത്രം
+  // WhatsApp റിപ്പോർട്ടിൽ വണ്ടി നമ്പർ ഉള്ളവർ മാത്രം
   const buildShareText = () => {
     const withVehicle = filteredRecords.filter(r => r.vehicleNumber && r.vehicleNumber.trim() !== '');
-    
     let text = `*SKL Attendance Report*\nDate: ${date} | Shift: ${currentShift.toUpperCase()}\n\n`;
     
     if (withVehicle.length === 0) {
