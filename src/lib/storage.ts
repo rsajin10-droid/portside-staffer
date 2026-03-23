@@ -14,19 +14,7 @@ export interface AttendanceRecord {
   mobile: string;
   status: 'present' | 'absent' | 'extra_duty' | 'dcd' | 'dcn';
   subStatus?: 'dcd' | 'dcn'; // for absent with DCD/DCN
-  vehicleNumber?: string;
-  createdAt: string;
-  createdBy: string;
-}
-
-export interface JobAllotmentRecord {
-  id: string;
-  date: string;
-  shift: 'day' | 'night';
-  vehicleNumber: string;
-  staffId: string;
-  staffName: string;
-  mobile: string;
+  vehicleNumber?: string; // വണ്ടി നമ്പർ ഇവിടെയുണ്ട്
   createdAt: string;
   createdBy: string;
 }
@@ -45,7 +33,7 @@ const get = <T>(key: string): T[] => {
 const set = <T>(key: string, data: T[]) => localStorage.setItem(key, JSON.stringify(data));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-// Users
+// --- Users ---
 export const getUsers = (): AppUser[] => {
   const users = get<AppUser>('skl_users');
   if (users.length === 0) {
@@ -61,16 +49,8 @@ export const addUser = (u: Omit<AppUser, 'id'>): AppUser => {
   set('skl_users', [...users, nu]);
   return nu;
 };
-export const updateUserPassword = (id: string, password: string) => {
-  const users = getUsers();
-  set('skl_users', users.map(u => u.id === id ? { ...u, password } : u));
-};
-export const deactivateUser = (id: string) => {
-  const users = getUsers();
-  set('skl_users', users.map(u => u.id === id ? { ...u, deactivated: true } : u));
-};
 
-// Staff
+// --- Staff ---
 export const getStaffList = (): Staff[] => get<Staff>('skl_staff');
 export const addStaff = (s: Omit<Staff, 'id' | 'createdAt'>): Staff | null => {
   const list = getStaffList();
@@ -79,72 +59,43 @@ export const addStaff = (s: Omit<Staff, 'id' | 'createdAt'>): Staff | null => {
   set('skl_staff', [...list, ns]);
   return ns;
 };
-export const updateStaff = (id: string, data: Partial<Staff>) => {
-  const list = getStaffList();
-  set('skl_staff', list.map(s => s.id === id ? { ...s, ...data } : s));
-};
 export const deleteStaff = (id: string) => {
   set('skl_staff', getStaffList().filter(s => s.id !== id));
 };
-export const importStaffBulk = (items: { name: string; mobile: string }[]): number => {
-  const list = getStaffList();
-  let added = 0;
-  const names = new Set(list.map(s => s.name.toLowerCase()));
-  const newItems: Staff[] = [];
-  for (const item of items) {
-    if (!names.has(item.name.toLowerCase())) {
-      newItems.push({ ...item, id: uid(), createdAt: new Date().toISOString() });
-      names.add(item.name.toLowerCase());
-      added++;
-    }
-  }
-  set('skl_staff', [...list, ...newItems]);
-  return added;
-};
 
-// Attendance
+// --- Attendance (Modified to include vehicleNumber) ---
 export const getAttendance = (): AttendanceRecord[] => get<AttendanceRecord>('skl_attendance');
+
 export const addAttendance = (r: Omit<AttendanceRecord, 'id' | 'createdAt'>): AttendanceRecord | null => {
   const list = getAttendance();
+  // ഒരു ഷിഫ്റ്റിൽ ഒരു ഡ്രൈവർക്ക് ഒരു തവണ മാത്രമേ അറ്റൻഡൻസ് നൽകാൻ പാടുള്ളൂ
   if (list.some(x => x.date === r.date && x.shift === r.shift && x.staffId === r.staffId)) return null;
+  
   const nr = { ...r, id: uid(), createdAt: new Date().toISOString() };
   set('skl_attendance', [...list, nr]);
   return nr;
 };
+
 export const updateAttendance = (id: string, data: Partial<AttendanceRecord>) => {
   const list = getAttendance();
   set('skl_attendance', list.map(r => r.id === id ? { ...r, ...data } : r));
 };
+
 export const deleteAttendance = (id: string) => {
   set('skl_attendance', getAttendance().filter(r => r.id !== id));
 };
+
 export const getShiftAttendance = (date: string, shift: 'day' | 'night') =>
   getAttendance().filter(r => r.date === date && r.shift === shift);
 
-// Job Allotment
-export const getJobAllotments = (): JobAllotmentRecord[] => get<JobAllotmentRecord>('skl_jobs');
-export const addJobAllotment = (r: Omit<JobAllotmentRecord, 'id' | 'createdAt'>): JobAllotmentRecord | null => {
-  const list = getJobAllotments();
-  if (list.some(x => x.date === r.date && x.shift === r.shift && (x.vehicleNumber === r.vehicleNumber || x.staffId === r.staffId))) return null;
-  const nr = { ...r, id: uid(), createdAt: new Date().toISOString() };
-  set('skl_jobs', [...list, nr]);
-  return nr;
-};
-export const updateJobAllotment = (id: string, data: Partial<JobAllotmentRecord>) => {
-  const list = getJobAllotments();
-  set('skl_jobs', list.map(r => r.id === id ? { ...r, ...data } : r));
-};
-export const deleteJobAllotment = (id: string) => {
-  set('skl_jobs', getJobAllotments().filter(r => r.id !== id));
-};
-export const getShiftJobs = (date: string, shift: 'day' | 'night') =>
-  getJobAllotments().filter(r => r.date === date && r.shift === shift).sort((a, b) => a.vehicleNumber.localeCompare(b.vehicleNumber));
+// --- Vehicle Numbers (T001 to T100) ---
+export const VEHICLES = Array.from({ length: 100 }, (_, i) => `T${String(i + 1).padStart(3, '0')}`);
 
-// Vehicle numbers
-export const VEHICLES = Array.from({ length: 200 }, (_, i) => `T${String(i + 1).padStart(3, '0')}`);
-
-// Last used driver for vehicle
+// മുൻപ് വണ്ടി ഓടിച്ച ഡ്രൈവറെ കണ്ടെത്താൻ (ഇപ്പോൾ ഇത് അറ്റൻഡൻസ് ടേബിളിൽ നിന്ന് നോക്കും)
 export const getLastDriver = (vehicle: string): { staffId: string; staffName: string; mobile: string } | null => {
-  const jobs = getJobAllotments().filter(j => j.vehicleNumber === vehicle).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  return jobs.length > 0 ? { staffId: jobs[0].staffId, staffName: jobs[0].staffName, mobile: jobs[0].mobile } : null;
+  const records = getAttendance()
+    .filter(j => j.vehicleNumber === vehicle)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  
+  return records.length > 0 ? { staffId: records[0].staffId, staffName: records[0].staffName, mobile: records[0].mobile } : null;
 };
