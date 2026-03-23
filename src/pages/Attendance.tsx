@@ -13,9 +13,9 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getStaffList, getShiftAttendance, addAttendance, updateAttendance, deleteAttendance,
-  getAttendance, type AttendanceRecord, type Staff
+  getAttendance, type AttendanceRecord, type Staff, VEHICLES
 } from '@/lib/storage';
-import { Pencil, Trash2, Download, MessageCircle, Maximize2, Minimize2 } from 'lucide-react';
+import { Pencil, Trash2, Download, MessageCircle, Truck } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -26,6 +26,7 @@ const statusColors: Record<string, string> = {
   dcd: 'bg-info text-info-foreground',
   dcn: 'bg-secondary text-secondary-foreground',
 };
+
 const statusLabels: Record<string, string> = {
   present: 'Present', absent: 'Absent', extra_duty: 'OT', dcd: 'DCD', dcn: 'DCN',
 };
@@ -47,19 +48,19 @@ export default function Attendance() {
   const { toast } = useToast();
   const [params] = useSearchParams();
   const today = new Date().toISOString().split('T')[0];
+  
   const [date, setDate] = useState(today);
   const [currentShift, setCurrentShift] = useState<'day' | 'night'>(shift);
   const [staffList] = useState<Staff[]>(getStaffList());
   const [selectedStaff, setSelectedStaff] = useState('');
+  const [selectedVehicle, setSelectedVehicle] = useState('');
   const [staffSearch, setStaffSearch] = useState('');
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [editId, setEditId] = useState<string | null>(null);
   const [filterDriver, setFilterDriver] = useState('');
   const [withDCD, setWithDCD] = useState(false);
   const [withDCN, setWithDCN] = useState(false);
-  const [fullPage, setFullPage] = useState(false);
 
-  // Repeat last shift state
   const [showRepeat, setShowRepeat] = useState(false);
   const [fromDate, setFromDate] = useState(today);
   const [fromShift, setFromShift] = useState<'day' | 'night'>(shift === 'day' ? 'night' : 'day');
@@ -89,19 +90,18 @@ export default function Attendance() {
   const publishRepeat = () => {
     let added = 0;
     repeatRecords.forEach(a => {
-      const res = addAttendance({ date: repeatDate, shift: repeatShift, staffId: a.staffId, staffName: a.staffName, mobile: a.mobile, status: a.status, createdBy: user?.displayName || '' });
+      const res = addAttendance({ 
+        date: repeatDate, shift: repeatShift, staffId: a.staffId, staffName: a.staffName, 
+        mobile: a.mobile, status: a.status, vehicleNumber: a.vehicleNumber, 
+        createdBy: user?.displayName || '' 
+      });
       if (res) added++;
     });
-    toast({ title: `${added} records published to ${repeatDate} ${repeatShift} shift` });
+    toast({ title: `${added} records published` });
     setShowRepeat(false);
     setDate(repeatDate);
     setCurrentShift(repeatShift);
     refresh();
-  };
-
-  const removeRepeatRecord = (id: string) => setRepeatRecords(prev => prev.filter(r => r.id !== id));
-  const updateRepeatStatus = (id: string, status: AttendanceRecord['status']) => {
-    setRepeatRecords(prev => prev.map(r => r.id === id ? { ...r, status } : r));
   };
 
   const staff = useMemo(() => selectedStaff ? staffList.find(x => x.id === selectedStaff) : null, [selectedStaff, staffList]);
@@ -124,305 +124,158 @@ export default function Attendance() {
     }
 
     if (editId) {
-      updateAttendance(editId, { status: finalStatus, subStatus });
+      updateAttendance(editId, { status: finalStatus, subStatus, vehicleNumber: selectedVehicle });
       setEditId(null);
       toast({ title: 'Updated' });
     } else {
-      const res = addAttendance({ date, shift: currentShift, staffId: staff.id, staffName: staff.name, mobile: staff.mobile, status: finalStatus, subStatus, createdBy: user?.displayName || '' });
-      if (!res) return toast({ title: 'Already marked for this shift', variant: 'destructive' });
-      toast({ title: `${staff.name} marked as ${statusLabels[finalStatus]}${subStatus ? ' + ' + subStatus.toUpperCase() : ''}` });
+      const res = addAttendance({ 
+        date, shift: currentShift, staffId: staff.id, staffName: staff.name, 
+        mobile: staff.mobile, status: finalStatus, subStatus, 
+        vehicleNumber: selectedVehicle, 
+        createdBy: user?.displayName || '' 
+      });
+      if (!res) return toast({ title: 'Already marked', variant: 'destructive' });
+      toast({ title: 'Saved' });
     }
-    setSelectedStaff(''); setStaffSearch('');
+    
+    setSelectedStaff(''); setStaffSearch(''); setSelectedVehicle('');
     setWithDCD(false); setWithDCN(false);
     refresh();
   };
 
   const handleDelete = (id: string) => { deleteAttendance(id); refresh(); toast({ title: 'Deleted' }); };
-  const handleEdit = (r: AttendanceRecord) => { setEditId(r.id); setSelectedStaff(r.staffId); setStaffSearch(r.staffName); };
+  const handleEdit = (r: AttendanceRecord) => { 
+    setEditId(r.id); setSelectedStaff(r.staffId); 
+    setStaffSearch(r.staffName); setSelectedVehicle(r.vehicleNumber || '');
+  };
 
+  // വാട്ട്‌സ്ആപ്പ് റിപ്പോർട്ടിൽ വണ്ടി നമ്പർ ഉള്ളവർ മാത്രം
   const buildShareText = () => {
-    const sorted = [...filteredRecords];
-    const ot = sorted.filter(r => r.status === 'extra_duty');
-    const others = sorted.filter(r => r.status !== 'extra_duty');
-    const finalList = [...others, ...ot];
-    let text = `*SKL - Attendance*\nDate: ${date} | Shift: ${currentShift.toUpperCase()}\nSupervisor: ${user?.displayName}\n\n`;
-    finalList.forEach((r, i) => {
-      const st = getShareStatus(r.status, r.subStatus === 'dcd', r.subStatus === 'dcn');
-      text += `${i + 1}. ${r.staffName} - ${r.mobile}${st ? ' - ' + st : ''}\n`;
-    });
+    const withVehicle = filteredRecords.filter(r => r.vehicleNumber && r.vehicleNumber.trim() !== '');
+    
+    let text = `*SKL Attendance Report*\nDate: ${date} | Shift: ${currentShift.toUpperCase()}\n\n`;
+    
+    if (withVehicle.length === 0) {
+      text += "_No vehicles assigned._";
+    } else {
+      withVehicle.forEach((r, i) => {
+        const st = getShareStatus(r.status, r.subStatus === 'dcd', r.subStatus === 'dcn');
+        text += `${i + 1}. ${r.staffName} - [${r.vehicleNumber}]${st ? ' - ' + st : ''}\n`;
+      });
+    }
     return text;
   };
 
   const shareAsPdf = () => {
     const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text('SKL - Attendance List', 14, 15);
-    doc.setFontSize(10);
-    doc.text(`Date: ${date} | Shift: ${currentShift.toUpperCase()} | Supervisor: ${user?.displayName}`, 14, 24);
-    const sorted = [...filteredRecords];
-    const ot = sorted.filter(r => r.status === 'extra_duty');
-    const others = sorted.filter(r => r.status !== 'extra_duty');
-    const finalList = [...others, ...ot];
+    doc.text('Attendance List', 14, 15);
     autoTable(doc, {
-      startY: 30,
-      head: [['#', 'Driver Name', 'Mobile', 'Status']],
-      body: finalList.map((r, i) => {
-        const st = getShareStatus(r.status, r.subStatus === 'dcd', r.subStatus === 'dcn');
-        return [i + 1, r.staffName, r.mobile, st || 'Present'];
-      }),
+      startY: 25,
+      head: [['#', 'Driver', 'Vehicle', 'Status']],
+      body: filteredRecords.map((r, i) => [i + 1, r.staffName, r.vehicleNumber || '---', statusLabels[r.status]]),
     });
-    doc.save(`attendance_${date}_${currentShift}.pdf`);
+    doc.save(`attendance_${date}.pdf`);
   };
 
   const shareWhatsApp = () => {
-    const text = buildShareText();
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    window.open(`https://wa.me/?text=${encodeURIComponent(buildShareText())}`, '_blank');
   };
-
-  // Full page mode - show only the list
-  if (fullPage) {
-    return (
-      <Layout>
-        <div className="space-y-2 max-w-4xl mx-auto px-1">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <h2 className="text-lg font-bold">Attendance - {date} ({currentShift.toUpperCase()}) — {filteredRecords.length} records</h2>
-            <div className="flex gap-1.5 flex-wrap">
-              <Input placeholder="Filter..." value={filterDriver} onChange={e => setFilterDriver(e.target.value)} className="w-32 h-8 text-xs" />
-              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={shareAsPdf}><Download className="h-3.5 w-3.5 mr-1" />PDF</Button>
-              <Button size="sm" variant="outline" className="h-8 text-xs text-success" onClick={shareWhatsApp}><MessageCircle className="h-3.5 w-3.5 mr-1" />WA</Button>
-              <Button size="sm" variant="ghost" className="h-8" onClick={() => setFullPage(false)}><Minimize2 className="h-4 w-4" /></Button>
-            </div>
-          </div>
-          <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 120px)' }}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-xs w-8">#</TableHead>
-                  <TableHead className="text-xs">Driver</TableHead>
-                  <TableHead className="text-xs">Mobile</TableHead>
-                  <TableHead className="text-xs">Status</TableHead>
-                  <TableHead className="text-xs w-16"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredRecords.map((r, i) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="text-xs py-1.5">{i + 1}</TableCell>
-                    <TableCell className="text-xs font-medium py-1.5">{r.staffName}</TableCell>
-                    <TableCell className="text-xs py-1.5">{r.mobile}</TableCell>
-                    <TableCell className="py-1.5"><Badge className={`${statusColors[r.status]} text-[10px] px-1.5`}>{statusLabels[r.status]}{r.status === 'absent' && r.subStatus ? ` + ${r.subStatus.toUpperCase()}` : ''}</Badge></TableCell>
-                    <TableCell className="flex gap-0.5 py-1.5">
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { handleEdit(r); setFullPage(false); }}><Pencil className="h-3.5 w-3.5" /></Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(r.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filteredRecords.length === 0 && (
-                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground text-xs">No records</TableCell></TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      </Layout>
-    );
-  }
 
   return (
     <Layout>
-      <div className="space-y-4 max-w-4xl mx-auto px-1">
-        <h2 className="text-xl md:text-2xl font-bold">Attendance</h2>
+      <div className="space-y-4 max-w-4xl mx-auto px-1 pb-10">
+        <h2 className="text-xl font-bold tracking-tight">Attendance</h2>
 
-        {!showRepeat && (
-          <Button variant="outline" size="sm" onClick={() => { loadFromShift(); setShowRepeat(true); }}>
-            Repeat Shift Attendance
-          </Button>
-        )}
-
-        {showRepeat && (
-          <Card className="border-accent">
-            <CardHeader className="pb-3"><CardTitle className="text-base md:text-lg">Repeat Attendance</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold text-muted-foreground">From Date</Label>
-                  <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="h-9 text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold text-muted-foreground">From Shift</Label>
-                  <Select value={fromShift} onValueChange={v => setFromShift(v as 'day' | 'night')}>
-                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="day">Day</SelectItem>
-                      <SelectItem value="night">Night</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold text-primary">Publish to Date</Label>
-                  <Input type="date" value={repeatDate} onChange={e => setRepeatDate(e.target.value)} className="h-9 text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-semibold text-primary">Publish to Shift</Label>
-                  <Select value={repeatShift} onValueChange={v => setRepeatShift(v as 'day' | 'night')}>
-                    <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="day">Day</SelectItem>
-                      <SelectItem value="night">Night</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="overflow-auto max-h-60 -mx-1">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-xs">Driver</TableHead>
-                      <TableHead className="text-xs">Status</TableHead>
-                      <TableHead className="text-xs w-12"></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {repeatRecords.map(r => (
-                      <TableRow key={r.id}>
-                        <TableCell className="text-xs py-1.5">{r.staffName}</TableCell>
-                        <TableCell className="py-1.5">
-                          <Select value={r.status} onValueChange={v => updateRepeatStatus(r.id, v as AttendanceRecord['status'])}>
-                            <SelectTrigger className="w-28 h-7 text-xs"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="present">Present</SelectItem>
-                              <SelectItem value="absent">Absent</SelectItem>
-                              <SelectItem value="extra_duty">OT</SelectItem>
-                              <SelectItem value="dcd">DCD</SelectItem>
-                              <SelectItem value="dcn">DCN</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell className="py-1.5">
-                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => removeRepeatRecord(r.id)}>
-                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {repeatRecords.length === 0 && (
-                      <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground text-xs">No records from selected shift</TableCell></TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" onClick={publishRepeat} disabled={repeatRecords.length === 0}>Publish</Button>
-                <Button size="sm" variant="outline" onClick={() => setShowRepeat(false)}>Cancel</Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        <Card>
-          <CardHeader className="pb-3"><CardTitle className="text-base md:text-lg">Mark Attendance</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Date</Label>
-                <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="h-9 text-sm" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Shift</Label>
-                <Select value={currentShift} onValueChange={v => setCurrentShift(v as 'day' | 'night')}>
-                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="day">Day</SelectItem>
-                    <SelectItem value="night">Night</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1 col-span-2 sm:col-span-1">
-                <Label className="text-xs">Driver Name</Label>
-                <Input
-                  placeholder="Search driver..."
-                  value={staffSearch}
-                  onChange={e => { setStaffSearch(e.target.value); setSelectedStaff(''); }}
-                  className="h-9 text-sm"
-                />
-                {staffSearch && !selectedStaff && (
-                  <div className="border rounded-md max-h-40 overflow-auto bg-popover z-50 relative shadow-lg">
-                    {filteredStaff.map(s => (
-                      <div key={s.id} className="px-3 py-2 hover:bg-muted cursor-pointer text-sm"
-                        onClick={() => { setSelectedStaff(s.id); setStaffSearch(s.name); }}>
-                        {s.name} - {s.mobile}
-                      </div>
-                    ))}
-                    {filteredStaff.length === 0 && <div className="px-3 py-2 text-muted-foreground text-sm">No staff found</div>}
-                  </div>
+        <Card className="border-dashed bg-slate-50/50">
+            <CardContent className="p-3">
+                {!showRepeat ? (
+                    <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => setShowRepeat(true)}>Repeat Previous Shift Data</Button>
+                ) : (
+                    <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
+                            <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="h-8 text-xs" />
+                            <Select value={fromShift} onValueChange={v => setFromShift(v as any)}><SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                <SelectContent><SelectItem value="day">Day</SelectItem><SelectItem value="night">Night</SelectItem></SelectContent>
+                            </Select>
+                        </div>
+                        <div className="flex gap-2">
+                            <Button size="sm" className="flex-1 text-xs" onClick={publishRepeat}>Publish Now</Button>
+                            <Button size="sm" variant="ghost" className="flex-1 text-xs" onClick={() => setShowRepeat(false)}>Cancel</Button>
+                        </div>
+                    </div>
                 )}
-              </div>
-            </div>
-            {staff && <p className="text-xs text-muted-foreground">Mobile: {staff.mobile}</p>}
-            
-            {/* DCD/DCN checkboxes */}
-            <div className="flex items-center gap-4 flex-wrap">
-              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                <Checkbox checked={withDCD} onCheckedChange={(v) => { setWithDCD(!!v); if (v) setWithDCN(false); }} />
-                <span>With DCD</span>
-              </label>
-              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-                <Checkbox checked={withDCN} onCheckedChange={(v) => { setWithDCN(!!v); if (v) setWithDCD(false); }} />
-                <span>With DCN</span>
-              </label>
+            </CardContent>
+        </Card>
+
+        <Card className="shadow-sm border-slate-200">
+          <CardHeader className="pb-2 bg-slate-50/80"><CardTitle className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Marking Form</CardTitle></CardHeader>
+          <CardContent className="p-4 space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1"><Label className="text-[10px] font-bold">DATE</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} className="h-9" /></div>
+                <div className="space-y-1"><Label className="text-[10px] font-bold">SHIFT</Label>
+                    <Select value={currentShift} onValueChange={v => setCurrentShift(v as any)}><SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                        <SelectContent><SelectItem value="day">Day</SelectItem><SelectItem value="night">Night</SelectItem></SelectContent>
+                    </Select>
+                </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" onClick={() => markAttendance('present')} className="bg-success hover:bg-success/90 text-success-foreground">Present{withDCD ? ' + DCD' : withDCN ? ' + DCN' : ''}</Button>
-              <Button size="sm" onClick={() => markAttendance('absent')} variant="destructive">Absent{withDCD ? ' + DCD' : withDCN ? ' + DCN' : ''}</Button>
-              <Button size="sm" onClick={() => markAttendance('extra_duty')} className="bg-warning hover:bg-warning/90 text-warning-foreground">Overtime (OT)</Button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-1 relative">
+                    <Label className="text-[10px] font-bold">DRIVER NAME</Label>
+                    <Input placeholder="Search driver..." value={staffSearch} onChange={e => { setStaffSearch(e.target.value); setSelectedStaff(''); }} className="h-9" />
+                    {staffSearch && !selectedStaff && (
+                        <div className="absolute z-50 w-full bg-white border shadow-xl rounded-md mt-1 max-h-40 overflow-auto">
+                            {filteredStaff.map(s => (<div key={s.id} className="p-2.5 hover:bg-slate-50 cursor-pointer text-sm border-b last:border-0" onClick={() => { setSelectedStaff(s.id); setStaffSearch(s.name); }}>{s.name}</div>))}
+                        </div>
+                    )}
+                </div>
+                <div className="space-y-1">
+                    <Label className="text-[10px] font-bold flex items-center gap-1 text-blue-600 uppercase tracking-tighter"><Truck className="w-3 h-3" /> Vehicle (Optional)</Label>
+                    <Select value={selectedVehicle} onValueChange={setSelectedVehicle}>
+                        <SelectTrigger className="h-9 border-blue-100 bg-blue-50/40 font-semibold"><SelectValue placeholder="T001 - T100" /></SelectTrigger>
+                        <SelectContent className="max-h-60">{VEHICLES.map(v => (<SelectItem key={v} value={v}>{v}</SelectItem>))}</SelectContent>
+                    </Select>
+                </div>
             </div>
-            <p className="text-[10px] text-muted-foreground">DCD = Duty Change Day | DCN = Duty Change Night | OT = Overtime</p>
+
+            <div className="flex gap-6 py-1">
+              <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><Checkbox checked={withDCD} onCheckedChange={(v) => { setWithDCD(!!v); if (v) setWithDCN(false); }} />DCD</label>
+              <label className="flex items-center gap-2 text-xs font-bold cursor-pointer"><Checkbox checked={withDCN} onCheckedChange={(v) => { setWithDCN(!!v); if (v) setWithDCD(false); }} />DCN</label>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <Button onClick={() => markAttendance('present')} className="bg-emerald-600 hover:bg-emerald-700 h-11 text-xs font-bold uppercase tracking-wide">Present</Button>
+              <Button onClick={() => markAttendance('absent')} variant="destructive" className="h-11 text-xs font-bold uppercase tracking-wide">Absent</Button>
+              <Button onClick={() => markAttendance('extra_duty')} className="bg-amber-500 hover:bg-amber-600 h-11 text-xs font-bold uppercase tracking-wide text-white">OT (Duty)</Button>
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2 pb-3">
-            <CardTitle className="text-base">List ({filteredRecords.length})</CardTitle>
-            <div className="flex gap-1.5 flex-wrap">
-              <Input placeholder="Filter..." value={filterDriver} onChange={e => setFilterDriver(e.target.value)} className="w-32 h-8 text-xs" />
-              <Button size="sm" variant="ghost" className="h-8" onClick={() => setFullPage(true)}><Maximize2 className="h-4 w-4" /></Button>
-              <Button size="sm" variant="outline" className="h-8 text-xs" onClick={shareAsPdf}><Download className="h-3.5 w-3.5 mr-1" />PDF</Button>
-              <Button size="sm" variant="outline" className="h-8 text-xs text-success" onClick={shareWhatsApp}><MessageCircle className="h-3.5 w-3.5 mr-1" />WA</Button>
-            </div>
+        <Card className="shadow-lg border-0">
+          <CardHeader className="p-3 bg-slate-900 text-white flex flex-row items-center justify-between">
+            <CardTitle className="text-xs font-bold uppercase tracking-widest">Shift Records ({filteredRecords.length})</CardTitle>
+            <Input placeholder="Quick Filter..." value={filterDriver} onChange={e => setFilterDriver(e.target.value)} className="w-28 h-7 text-[10px] bg-slate-800 border-none text-white focus:ring-0" />
           </CardHeader>
-          <CardContent className="px-2 md:px-6">
-            <div className="overflow-auto max-h-96">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-xs w-8">#</TableHead>
-                    <TableHead className="text-xs">Driver</TableHead>
-                    <TableHead className="text-xs hidden sm:table-cell">Mobile</TableHead>
-                    <TableHead className="text-xs">Status</TableHead>
-                    <TableHead className="text-xs w-16"></TableHead>
+          <div className="overflow-auto max-h-[450px]">
+            <Table>
+              <TableHeader className="bg-slate-50"><TableRow><TableHead className="w-8 text-[9px] font-black uppercase">#</TableHead><TableHead className="text-[9px] font-black uppercase">Driver</TableHead><TableHead className="text-[9px] font-black uppercase">Vehicle</TableHead><TableHead className="text-[9px] font-black uppercase">Status</TableHead><TableHead className="w-10"></TableHead></TableRow></TableHeader>
+              <TableBody>
+                {filteredRecords.map((r, i) => (
+                  <TableRow key={r.id} className="hover:bg-slate-50/80 transition-colors">
+                    <TableCell className="py-2.5 text-[10px] text-slate-400 font-medium">{i + 1}</TableCell>
+                    <TableCell className="py-2.5 text-xs font-bold text-slate-700">{r.staffName}</TableCell>
+                    <TableCell className="py-2.5 text-xs font-black text-blue-600 tracking-tight">{r.vehicleNumber || '---'}</TableCell>
+                    <TableCell className="py-2.5"><Badge className={`${statusColors[r.status]} text-[9px] px-1.5 h-5 font-bold uppercase border-0 shadow-none`}>{statusLabels[r.status]} {r.subStatus ? `(${r.subStatus})` : ''}</Badge></TableCell>
+                    <TableCell className="py-2.5 text-right"><div className="flex gap-1 justify-end"><Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(r)}><Pencil className="h-3.5 w-3.5 text-slate-400" /></Button><Button size="icon" variant="ghost" className="h-7 w-7 text-rose-100 hover:text-rose-600" onClick={() => handleDelete(r.id)}><Trash2 className="h-3.5 w-3.5" /></Button></div></TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredRecords.map((r, i) => (
-                    <TableRow key={r.id}>
-                      <TableCell className="text-xs py-1.5">{i + 1}</TableCell>
-                      <TableCell className="text-xs font-medium py-1.5">{r.staffName}</TableCell>
-                      <TableCell className="text-xs py-1.5 hidden sm:table-cell">{r.mobile}</TableCell>
-                      <TableCell className="py-1.5"><Badge className={`${statusColors[r.status]} text-[10px] px-1.5`}>{statusLabels[r.status]}{r.status === 'absent' && r.subStatus ? ` + ${r.subStatus.toUpperCase()}` : ''}</Badge></TableCell>
-                      <TableCell className="flex gap-0.5 py-1.5">
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(r)}><Pencil className="h-3.5 w-3.5" /></Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDelete(r.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                  {filteredRecords.length === 0 && (
-                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground text-xs">No records</TableCell></TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="p-3 border-t grid grid-cols-2 gap-3 bg-slate-50/50">
+              <Button size="sm" variant="outline" onClick={shareAsPdf} className="h-10 text-xs font-bold border-slate-200"><Download className="w-3.5 h-3.5 mr-2" /> Download PDF</Button>
+              <Button size="sm" onClick={shareWhatsApp} className="h-10 text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 shadow-md"><MessageCircle className="w-3.5 h-3.5 mr-2" /> WhatsApp Report</Button>
+          </div>
         </Card>
       </div>
     </Layout>
