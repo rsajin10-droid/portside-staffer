@@ -88,8 +88,8 @@ export const deleteAttendance = (id: string) => {
 export const getShiftAttendance = (date: string, shift: 'day' | 'night') =>
   getAttendance().filter(r => r.date === date && r.shift === shift);
 
-// --- Vehicle Numbers (T001 to T100) ---
-export const VEHICLES = Array.from({ length: 100 }, (_, i) => `T${String(i + 1).padStart(3, '0')}`);
+// --- Vehicle Numbers (T001 to T200) ---
+export const VEHICLES = Array.from({ length: 200 }, (_, i) => `T${String(i + 1).padStart(3, '0')}`);
 
 // മുൻപ് വണ്ടി ഓടിച്ച ഡ്രൈവറെ കണ്ടെത്താൻ (ഇപ്പോൾ ഇത് അറ്റൻഡൻസ് ടേബിളിൽ നിന്ന് നോക്കും)
 export const getLastDriver = (vehicle: string): { staffId: string; staffName: string; mobile: string } | null => {
