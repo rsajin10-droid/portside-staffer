@@ -59,8 +59,34 @@ export const addStaff = (s: Omit<Staff, 'id' | 'createdAt'>): Staff | null => {
   set('skl_staff', [...list, ns]);
   return ns;
 };
+export const updateStaff = (id: string, data: Partial<Staff>) => {
+  set('skl_staff', getStaffList().map(s => s.id === id ? { ...s, ...data } : s));
+};
 export const deleteStaff = (id: string) => {
   set('skl_staff', getStaffList().filter(s => s.id !== id));
+};
+export const importStaffBulk = (items: Omit<Staff, 'id' | 'createdAt'>[]): number => {
+  const list = getStaffList();
+  let added = 0;
+  const newList = [...list];
+  items.forEach(s => {
+    if (!newList.some(x => x.name.toLowerCase() === s.name.toLowerCase())) {
+      newList.push({ ...s, id: uid(), createdAt: new Date().toISOString() });
+      added++;
+    }
+  });
+  set('skl_staff', newList);
+  return added;
+};
+
+// --- Users (extended) ---
+export const updateUserPassword = (id: string, password: string) => {
+  const users = getUsers();
+  set('skl_users', users.map(u => u.id === id ? { ...u, password } : u));
+};
+export const deactivateUser = (id: string, deactivated: boolean) => {
+  const users = getUsers();
+  set('skl_users', users.map(u => u.id === id ? { ...u, deactivated } : u));
 };
 
 // --- Attendance (Modified to include vehicleNumber) ---

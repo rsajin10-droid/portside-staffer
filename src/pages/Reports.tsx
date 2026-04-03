@@ -64,10 +64,9 @@ export default function Reports() {
     let records = allAttendance.filter(r => r.date === dayDate);
     if (dayShift !== 'both') records = records.filter(r => r.shift === dayShift);
     return records.map((r, i) => {
-      const job = allJobs.find(j => j.date === r.date && j.shift === r.shift && j.staffId === r.staffId);
-      return { ...r, serial: i + 1, vehicle: job?.vehicleNumber || '-', statusLabel: getStatusLabel(r) };
+      return { ...r, serial: i + 1, vehicle: r.vehicleNumber || '-', statusLabel: getStatusLabel(r) };
     });
-  }, [dayDate, dayShift, allAttendance, allJobs]);
+  }, [dayDate, dayShift, allAttendance]);
 
   // Month + driver report data
   const monthDriverData = useMemo(() => {
