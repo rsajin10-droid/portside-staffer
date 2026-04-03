@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
-import { getAttendance, getStaffList, getJobAllotments, type AttendanceRecord } from '@/lib/storage';
+import { getAttendance, getStaffList, type AttendanceRecord } from '@/lib/storage';
 import { Download, Eye, MessageCircle } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
