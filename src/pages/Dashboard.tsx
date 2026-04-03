@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { ClipboardCheck, Truck, Users, Clock, TrendingUp, Shield, Plus, Trash2, CalendarDays } from 'lucide-react';
+import { ClipboardCheck, BookOpen, Users, Clock, TrendingUp, Shield, Plus, Trash2, CalendarDays } from 'lucide-react';
 import { getShiftAttendance } from '@/lib/storage';
 import seaportImg from '@/assets/seaport.jpg';
 import gradientLogo from '@/assets/vizhinjam-gradient-logo.webp';
