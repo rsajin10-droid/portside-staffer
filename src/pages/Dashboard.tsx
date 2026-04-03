@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { ClipboardCheck, Truck, Users, Clock, TrendingUp, Shield, Plus, Trash2, CalendarDays } from 'lucide-react';
+import { ClipboardCheck, BookOpen, Users, Clock, TrendingUp, Shield, Plus, Trash2, CalendarDays } from 'lucide-react';
 import { getShiftAttendance } from '@/lib/storage';
 import seaportImg from '@/assets/seaport.jpg';
 import gradientLogo from '@/assets/vizhinjam-gradient-logo.webp';
@@ -147,8 +147,8 @@ export default function Dashboard() {
           <Button onClick={() => navigate('/attendance')} className="h-16 md:h-20 flex-col gap-1 text-xs md:text-sm shadow-md" variant="outline">
             <ClipboardCheck className="h-5 w-5 md:h-6 md:w-6 text-success" /> <span>Attendance</span>
           </Button>
-          <Button onClick={() => navigate('/job-allotment')} className="h-16 md:h-20 flex-col gap-1 text-xs md:text-sm shadow-md" variant="outline">
-            <Truck className="h-5 w-5 md:h-6 md:w-6 text-info" /> <span>Job Allotment</span>
+          <Button onClick={() => navigate('/driver-logbook')} className="h-16 md:h-20 flex-col gap-1 text-xs md:text-sm shadow-md" variant="outline">
+            <BookOpen className="h-5 w-5 md:h-6 md:w-6 text-info" /> <span>Driver Logbook</span>
           </Button>
         </div>
 
