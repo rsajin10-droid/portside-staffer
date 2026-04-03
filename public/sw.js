@@ -1,4 +1,4 @@
-const CACHE_NAME = 'skl-cache-v2';
+const CACHE_NAME = 'skl-cache-v3';
 const urlsToCache = ['/'];
 
 self.addEventListener('install', (event) => {

@@ -13,9 +13,9 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getStaffList, getShiftAttendance, addAttendance, updateAttendance, deleteAttendance,
-  getAttendance, type AttendanceRecord, type Staff
+  getAttendance, VEHICLES, getLastDriver, type AttendanceRecord, type Staff
 } from '@/lib/storage';
-import { Pencil, Trash2, Download, MessageCircle, Maximize2, Minimize2 } from 'lucide-react';
+import { Pencil, Trash2, Download, MessageCircle, Maximize2, Minimize2, Truck } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -42,13 +42,18 @@ const getShareStatus = (status: string, withDcdFlag?: boolean, withDcnFlag?: boo
   return '';
 };
 
+const detectShift = (): 'day' | 'night' => {
+  const hour = new Date().getHours();
+  return (hour >= 8 && hour < 20) ? 'day' : 'night';
+};
+
 export default function Attendance() {
-  const { user, shift } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
   const [params] = useSearchParams();
   const today = new Date().toISOString().split('T')[0];
   const [date, setDate] = useState(today);
-  const [currentShift, setCurrentShift] = useState<'day' | 'night'>(shift);
+  const [currentShift, setCurrentShift] = useState<'day' | 'night'>(detectShift());
   const [staffList] = useState<Staff[]>(getStaffList());
   const [selectedStaff, setSelectedStaff] = useState('');
   const [staffSearch, setStaffSearch] = useState('');
@@ -58,13 +63,15 @@ export default function Attendance() {
   const [withDCD, setWithDCD] = useState(false);
   const [withDCN, setWithDCN] = useState(false);
   const [fullPage, setFullPage] = useState(false);
+  const [vehicleNumber, setVehicleNumber] = useState('');
+  const [vehicleSearch, setVehicleSearch] = useState('');
 
   // Repeat last shift state
   const [showRepeat, setShowRepeat] = useState(false);
   const [fromDate, setFromDate] = useState(today);
-  const [fromShift, setFromShift] = useState<'day' | 'night'>(shift === 'day' ? 'night' : 'day');
+  const [fromShift, setFromShift] = useState<'day' | 'night'>(currentShift === 'day' ? 'night' : 'day');
   const [repeatDate, setRepeatDate] = useState(today);
-  const [repeatShift, setRepeatShift] = useState<'day' | 'night'>(shift);
+  const [repeatShift, setRepeatShift] = useState<'day' | 'night'>(currentShift);
   const [repeatRecords, setRepeatRecords] = useState<AttendanceRecord[]>([]);
 
   const refresh = () => setRecords(getShiftAttendance(date, currentShift));
@@ -76,6 +83,24 @@ export default function Attendance() {
       setShowRepeat(true);
     }
   }, []);
+
+  // Auto-fill vehicle number when driver is selected
+  useEffect(() => {
+    if (selectedStaff && !editId) {
+      const last = getLastDriver(''); // we need to find last vehicle for this driver
+      // Search all attendance for this driver's last used vehicle
+      const allRecords = getAttendance()
+        .filter(r => r.staffId === selectedStaff && r.vehicleNumber)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      if (allRecords.length > 0) {
+        setVehicleNumber(allRecords[0].vehicleNumber || '');
+        setVehicleSearch(allRecords[0].vehicleNumber || '');
+      } else {
+        setVehicleNumber('');
+        setVehicleSearch('');
+      }
+    }
+  }, [selectedStaff]);
 
   const loadFromShift = () => {
     const lastAtt = getAttendance().filter(a => a.date === fromDate && a.shift === fromShift);
@@ -89,7 +114,7 @@ export default function Attendance() {
   const publishRepeat = () => {
     let added = 0;
     repeatRecords.forEach(a => {
-      const res = addAttendance({ date: repeatDate, shift: repeatShift, staffId: a.staffId, staffName: a.staffName, mobile: a.mobile, status: a.status, createdBy: user?.displayName || '' });
+      const res = addAttendance({ date: repeatDate, shift: repeatShift, staffId: a.staffId, staffName: a.staffName, mobile: a.mobile, status: a.status, vehicleNumber: a.vehicleNumber, createdBy: user?.displayName || '' });
       if (res) added++;
     });
     toast({ title: `${added} records published to ${repeatDate} ${repeatShift} shift` });
@@ -108,8 +133,18 @@ export default function Attendance() {
   const filteredStaff = staffList.filter(s => s.name.toLowerCase().includes(staffSearch.toLowerCase()));
   const filteredRecords = records.filter(r => !filterDriver || r.staffName.toLowerCase().includes(filterDriver.toLowerCase()));
 
+  // Filter vehicles for search
+  const filteredVehicles = VEHICLES.filter(v => v.toLowerCase().includes(vehicleSearch.toLowerCase()));
+  // Vehicles already used in current shift
+  const usedVehicles = records.filter(r => r.vehicleNumber && r.id !== editId).map(r => r.vehicleNumber);
+
   const markAttendance = (status: AttendanceRecord['status']) => {
     if (!staff) return toast({ title: 'Select a driver', variant: 'destructive' });
+
+    // Check vehicle number duplicate in current shift (only if vehicle is provided)
+    if (vehicleNumber && usedVehicles.includes(vehicleNumber)) {
+      return toast({ title: `Vehicle ${vehicleNumber} already assigned in this shift`, variant: 'destructive' });
+    }
     
     let finalStatus = status;
     let subStatus: 'dcd' | 'dcn' | undefined = undefined;
@@ -124,23 +159,31 @@ export default function Attendance() {
     }
 
     if (editId) {
-      updateAttendance(editId, { status: finalStatus, subStatus });
+      updateAttendance(editId, { status: finalStatus, subStatus, vehicleNumber: vehicleNumber || undefined });
       setEditId(null);
       toast({ title: 'Updated' });
     } else {
-      const res = addAttendance({ date, shift: currentShift, staffId: staff.id, staffName: staff.name, mobile: staff.mobile, status: finalStatus, subStatus, createdBy: user?.displayName || '' });
+      const res = addAttendance({ date, shift: currentShift, staffId: staff.id, staffName: staff.name, mobile: staff.mobile, status: finalStatus, subStatus, vehicleNumber: vehicleNumber || undefined, createdBy: user?.displayName || '' });
       if (!res) return toast({ title: 'Already marked for this shift', variant: 'destructive' });
       toast({ title: `${staff.name} marked as ${statusLabels[finalStatus]}${subStatus ? ' + ' + subStatus.toUpperCase() : ''}` });
     }
     setSelectedStaff(''); setStaffSearch('');
     setWithDCD(false); setWithDCN(false);
+    setVehicleNumber(''); setVehicleSearch('');
     refresh();
   };
 
   const handleDelete = (id: string) => { deleteAttendance(id); refresh(); toast({ title: 'Deleted' }); };
-  const handleEdit = (r: AttendanceRecord) => { setEditId(r.id); setSelectedStaff(r.staffId); setStaffSearch(r.staffName); };
+  const handleEdit = (r: AttendanceRecord) => {
+    setEditId(r.id);
+    setSelectedStaff(r.staffId);
+    setStaffSearch(r.staffName);
+    setVehicleNumber(r.vehicleNumber || '');
+    setVehicleSearch(r.vehicleNumber || '');
+  };
 
-  const buildShareText = () => {
+  // WhatsApp share - Attendance only (no vehicle numbers)
+  const buildAttendanceShareText = () => {
     const sorted = [...filteredRecords];
     const ot = sorted.filter(r => r.status === 'extra_duty');
     const others = sorted.filter(r => r.status !== 'extra_duty');
@@ -149,6 +192,17 @@ export default function Attendance() {
     finalList.forEach((r, i) => {
       const st = getShareStatus(r.status, r.subStatus === 'dcd', r.subStatus === 'dcn');
       text += `${i + 1}. ${r.staffName} - ${r.mobile}${st ? ' - ' + st : ''}\n`;
+    });
+    return text;
+  };
+
+  // WhatsApp share - Job Allotment (only drivers with vehicle numbers)
+  const buildJobShareText = () => {
+    const withVehicle = filteredRecords.filter(r => r.vehicleNumber);
+    const sorted = withVehicle.sort((a, b) => (a.vehicleNumber || '').localeCompare(b.vehicleNumber || ''));
+    let text = `*SKL - Job Allotment*\nDate: ${date} | Shift: ${currentShift.toUpperCase()}\nSupervisor: ${user?.displayName}\n\n`;
+    sorted.forEach((r, i) => {
+      text += `${i + 1}. ${r.vehicleNumber} - ${r.staffName} - ${r.mobile}\n`;
     });
     return text;
   };
@@ -165,21 +219,26 @@ export default function Attendance() {
     const finalList = [...others, ...ot];
     autoTable(doc, {
       startY: 30,
-      head: [['#', 'Driver Name', 'Mobile', 'Status']],
+      head: [['#', 'Driver Name', 'Mobile', 'Vehicle', 'Status']],
       body: finalList.map((r, i) => {
         const st = getShareStatus(r.status, r.subStatus === 'dcd', r.subStatus === 'dcn');
-        return [i + 1, r.staffName, r.mobile, st || 'Present'];
+        return [i + 1, r.staffName, r.mobile, r.vehicleNumber || '-', st || 'Present'];
       }),
     });
     doc.save(`attendance_${date}_${currentShift}.pdf`);
   };
 
-  const shareWhatsApp = () => {
-    const text = buildShareText();
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+  const shareAttendanceWA = () => {
+    window.open(`https://wa.me/?text=${encodeURIComponent(buildAttendanceShareText())}`, '_blank');
   };
 
-  // Full page mode - show only the list
+  const shareJobWA = () => {
+    const withVehicle = filteredRecords.filter(r => r.vehicleNumber);
+    if (withVehicle.length === 0) return toast({ title: 'No drivers with vehicle numbers', variant: 'destructive' });
+    window.open(`https://wa.me/?text=${encodeURIComponent(buildJobShareText())}`, '_blank');
+  };
+
+  // Full page mode
   if (fullPage) {
     return (
       <Layout>
@@ -189,7 +248,8 @@ export default function Attendance() {
             <div className="flex gap-1.5 flex-wrap">
               <Input placeholder="Filter..." value={filterDriver} onChange={e => setFilterDriver(e.target.value)} className="w-32 h-8 text-xs" />
               <Button size="sm" variant="outline" className="h-8 text-xs" onClick={shareAsPdf}><Download className="h-3.5 w-3.5 mr-1" />PDF</Button>
-              <Button size="sm" variant="outline" className="h-8 text-xs text-success" onClick={shareWhatsApp}><MessageCircle className="h-3.5 w-3.5 mr-1" />WA</Button>
+              <Button size="sm" variant="outline" className="h-8 text-xs text-success" onClick={shareAttendanceWA}><MessageCircle className="h-3.5 w-3.5 mr-1" />Att</Button>
+              <Button size="sm" variant="outline" className="h-8 text-xs text-primary" onClick={shareJobWA}><Truck className="h-3.5 w-3.5 mr-1" />Job</Button>
               <Button size="sm" variant="ghost" className="h-8" onClick={() => setFullPage(false)}><Minimize2 className="h-4 w-4" /></Button>
             </div>
           </div>
@@ -200,6 +260,7 @@ export default function Attendance() {
                   <TableHead className="text-xs w-8">#</TableHead>
                   <TableHead className="text-xs">Driver</TableHead>
                   <TableHead className="text-xs">Mobile</TableHead>
+                  <TableHead className="text-xs">Vehicle</TableHead>
                   <TableHead className="text-xs">Status</TableHead>
                   <TableHead className="text-xs w-16"></TableHead>
                 </TableRow>
@@ -210,6 +271,7 @@ export default function Attendance() {
                     <TableCell className="text-xs py-1.5">{i + 1}</TableCell>
                     <TableCell className="text-xs font-medium py-1.5">{r.staffName}</TableCell>
                     <TableCell className="text-xs py-1.5">{r.mobile}</TableCell>
+                    <TableCell className="text-xs py-1.5">{r.vehicleNumber || '-'}</TableCell>
                     <TableCell className="py-1.5"><Badge className={`${statusColors[r.status]} text-[10px] px-1.5`}>{statusLabels[r.status]}{r.status === 'absent' && r.subStatus ? ` + ${r.subStatus.toUpperCase()}` : ''}</Badge></TableCell>
                     <TableCell className="flex gap-0.5 py-1.5">
                       <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { handleEdit(r); setFullPage(false); }}><Pencil className="h-3.5 w-3.5" /></Button>
@@ -218,7 +280,7 @@ export default function Attendance() {
                   </TableRow>
                 ))}
                 {filteredRecords.length === 0 && (
-                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground text-xs">No records</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground text-xs">No records</TableCell></TableRow>
                 )}
               </TableBody>
             </Table>
@@ -328,12 +390,12 @@ export default function Attendance() {
                 <Input type="date" value={date} onChange={e => setDate(e.target.value)} className="h-9 text-sm" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Shift</Label>
+                <Label className="text-xs">Shift <span className="text-muted-foreground">(auto)</span></Label>
                 <Select value={currentShift} onValueChange={v => setCurrentShift(v as 'day' | 'night')}>
                   <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="day">Day</SelectItem>
-                    <SelectItem value="night">Night</SelectItem>
+                    <SelectItem value="day">Day (8AM-8PM)</SelectItem>
+                    <SelectItem value="night">Night (8PM-8AM)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -358,6 +420,33 @@ export default function Attendance() {
                 )}
               </div>
             </div>
+
+            {/* Vehicle Number (optional) */}
+            <div className="space-y-1">
+              <Label className="text-xs">Vehicle Number <span className="text-muted-foreground">(optional)</span></Label>
+              <Input
+                placeholder="Search vehicle (T001-T200)..."
+                value={vehicleSearch}
+                onChange={e => { setVehicleSearch(e.target.value); setVehicleNumber(''); }}
+                className="h-9 text-sm"
+              />
+              {vehicleSearch && !vehicleNumber && (
+                <div className="border rounded-md max-h-40 overflow-auto bg-popover z-50 relative shadow-lg">
+                  {filteredVehicles.map(v => {
+                    const isUsed = usedVehicles.includes(v);
+                    return (
+                      <div key={v}
+                        className={`px-3 py-2 text-sm ${isUsed ? 'text-muted-foreground line-through cursor-not-allowed' : 'hover:bg-muted cursor-pointer'}`}
+                        onClick={() => { if (!isUsed) { setVehicleNumber(v); setVehicleSearch(v); } }}>
+                        {v}{isUsed ? ' (used)' : ''}
+                      </div>
+                    );
+                  })}
+                  {filteredVehicles.length === 0 && <div className="px-3 py-2 text-muted-foreground text-sm">No vehicle found</div>}
+                </div>
+              )}
+            </div>
+
             {staff && <p className="text-xs text-muted-foreground">Mobile: {staff.mobile}</p>}
             
             {/* DCD/DCN checkboxes */}
@@ -388,7 +477,8 @@ export default function Attendance() {
               <Input placeholder="Filter..." value={filterDriver} onChange={e => setFilterDriver(e.target.value)} className="w-32 h-8 text-xs" />
               <Button size="sm" variant="ghost" className="h-8" onClick={() => setFullPage(true)}><Maximize2 className="h-4 w-4" /></Button>
               <Button size="sm" variant="outline" className="h-8 text-xs" onClick={shareAsPdf}><Download className="h-3.5 w-3.5 mr-1" />PDF</Button>
-              <Button size="sm" variant="outline" className="h-8 text-xs text-success" onClick={shareWhatsApp}><MessageCircle className="h-3.5 w-3.5 mr-1" />WA</Button>
+              <Button size="sm" variant="outline" className="h-8 text-xs text-success" onClick={shareAttendanceWA}><MessageCircle className="h-3.5 w-3.5 mr-1" />Att</Button>
+              <Button size="sm" variant="outline" className="h-8 text-xs text-primary" onClick={shareJobWA}><Truck className="h-3.5 w-3.5 mr-1" />Job</Button>
             </div>
           </CardHeader>
           <CardContent className="px-2 md:px-6">
@@ -399,6 +489,7 @@ export default function Attendance() {
                     <TableHead className="text-xs w-8">#</TableHead>
                     <TableHead className="text-xs">Driver</TableHead>
                     <TableHead className="text-xs hidden sm:table-cell">Mobile</TableHead>
+                    <TableHead className="text-xs">Vehicle</TableHead>
                     <TableHead className="text-xs">Status</TableHead>
                     <TableHead className="text-xs w-16"></TableHead>
                   </TableRow>
@@ -409,6 +500,7 @@ export default function Attendance() {
                       <TableCell className="text-xs py-1.5">{i + 1}</TableCell>
                       <TableCell className="text-xs font-medium py-1.5">{r.staffName}</TableCell>
                       <TableCell className="text-xs py-1.5 hidden sm:table-cell">{r.mobile}</TableCell>
+                      <TableCell className="text-xs py-1.5">{r.vehicleNumber || '-'}</TableCell>
                       <TableCell className="py-1.5"><Badge className={`${statusColors[r.status]} text-[10px] px-1.5`}>{statusLabels[r.status]}{r.status === 'absent' && r.subStatus ? ` + ${r.subStatus.toUpperCase()}` : ''}</Badge></TableCell>
                       <TableCell className="flex gap-0.5 py-1.5">
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleEdit(r)}><Pencil className="h-3.5 w-3.5" /></Button>
@@ -417,7 +509,7 @@ export default function Attendance() {
                     </TableRow>
                   ))}
                   {filteredRecords.length === 0 && (
-                    <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground text-xs">No records</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground text-xs">No records</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>

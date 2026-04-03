@@ -59,8 +59,34 @@ export const addStaff = (s: Omit<Staff, 'id' | 'createdAt'>): Staff | null => {
   set('skl_staff', [...list, ns]);
   return ns;
 };
+export const updateStaff = (id: string, data: Partial<Staff>) => {
+  set('skl_staff', getStaffList().map(s => s.id === id ? { ...s, ...data } : s));
+};
 export const deleteStaff = (id: string) => {
   set('skl_staff', getStaffList().filter(s => s.id !== id));
+};
+export const importStaffBulk = (items: Omit<Staff, 'id' | 'createdAt'>[]): number => {
+  const list = getStaffList();
+  let added = 0;
+  const newList = [...list];
+  items.forEach(s => {
+    if (!newList.some(x => x.name.toLowerCase() === s.name.toLowerCase())) {
+      newList.push({ ...s, id: uid(), createdAt: new Date().toISOString() });
+      added++;
+    }
+  });
+  set('skl_staff', newList);
+  return added;
+};
+
+// --- Users (extended) ---
+export const updateUserPassword = (id: string, password: string) => {
+  const users = getUsers();
+  set('skl_users', users.map(u => u.id === id ? { ...u, password } : u));
+};
+export const deactivateUser = (id: string, deactivated: boolean) => {
+  const users = getUsers();
+  set('skl_users', users.map(u => u.id === id ? { ...u, deactivated } : u));
 };
 
 // --- Attendance (Modified to include vehicleNumber) ---
@@ -88,8 +114,8 @@ export const deleteAttendance = (id: string) => {
 export const getShiftAttendance = (date: string, shift: 'day' | 'night') =>
   getAttendance().filter(r => r.date === date && r.shift === shift);
 
-// --- Vehicle Numbers (T001 to T100) ---
-export const VEHICLES = Array.from({ length: 100 }, (_, i) => `T${String(i + 1).padStart(3, '0')}`);
+// --- Vehicle Numbers (T001 to T200) ---
+export const VEHICLES = Array.from({ length: 200 }, (_, i) => `T${String(i + 1).padStart(3, '0')}`);
 
 // മുൻപ് വണ്ടി ഓടിച്ച ഡ്രൈവറെ കണ്ടെത്താൻ (ഇപ്പോൾ ഇത് അറ്റൻഡൻസ് ടേബിളിൽ നിന്ന് നോക്കും)
 export const getLastDriver = (vehicle: string): { staffId: string; staffName: string; mobile: string } | null => {

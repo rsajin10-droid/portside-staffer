@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
-import { getAttendance, getStaffList, getJobAllotments, type AttendanceRecord } from '@/lib/storage';
+import { getAttendance, getStaffList, type AttendanceRecord } from '@/lib/storage';
 import { Download, Eye, MessageCircle } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -44,7 +44,7 @@ export default function Reports() {
 
   const staffList = getStaffList().sort((a, b) => a.name.localeCompare(b.name));
   const allAttendance = getAttendance();
-  const allJobs = getJobAllotments();
+  
   const filteredStaffSearch = staffList.filter(s => s.name.toLowerCase().includes(driverSearch.toLowerCase()));
 
   const getStatusLabel = (r: AttendanceRecord) => {
@@ -64,10 +64,9 @@ export default function Reports() {
     let records = allAttendance.filter(r => r.date === dayDate);
     if (dayShift !== 'both') records = records.filter(r => r.shift === dayShift);
     return records.map((r, i) => {
-      const job = allJobs.find(j => j.date === r.date && j.shift === r.shift && j.staffId === r.staffId);
-      return { ...r, serial: i + 1, vehicle: job?.vehicleNumber || '-', statusLabel: getStatusLabel(r) };
+      return { ...r, serial: i + 1, vehicle: r.vehicleNumber || '-', statusLabel: getStatusLabel(r) };
     });
-  }, [dayDate, dayShift, allAttendance, allJobs]);
+  }, [dayDate, dayShift, allAttendance]);
 
   // Month + driver report data
   const monthDriverData = useMemo(() => {
