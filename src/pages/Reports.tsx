@@ -44,7 +44,7 @@ export default function Reports() {
 
   const staffList = getStaffList().sort((a, b) => a.name.localeCompare(b.name));
   const allAttendance = getAttendance();
-  const allJobs = getJobAllotments();
+  
   const filteredStaffSearch = staffList.filter(s => s.name.toLowerCase().includes(driverSearch.toLowerCase()));
 
   const getStatusLabel = (r: AttendanceRecord) => {
