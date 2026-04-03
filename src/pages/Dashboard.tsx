@@ -147,8 +147,8 @@ export default function Dashboard() {
           <Button onClick={() => navigate('/attendance')} className="h-16 md:h-20 flex-col gap-1 text-xs md:text-sm shadow-md" variant="outline">
             <ClipboardCheck className="h-5 w-5 md:h-6 md:w-6 text-success" /> <span>Attendance</span>
           </Button>
-          <Button onClick={() => navigate('/job-allotment')} className="h-16 md:h-20 flex-col gap-1 text-xs md:text-sm shadow-md" variant="outline">
-            <Truck className="h-5 w-5 md:h-6 md:w-6 text-info" /> <span>Job Allotment</span>
+          <Button onClick={() => navigate('/driver-logbook')} className="h-16 md:h-20 flex-col gap-1 text-xs md:text-sm shadow-md" variant="outline">
+            <BookOpen className="h-5 w-5 md:h-6 md:w-6 text-info" /> <span>Driver Logbook</span>
           </Button>
         </div>
 
