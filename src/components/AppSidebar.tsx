@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Users, ClipboardCheck, Truck, FileText, BookOpen, BookOpenText, Settings, LogOut
+  LayoutDashboard, Users, ClipboardCheck, FileText, BookOpen, BookOpenText, Settings, LogOut
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
