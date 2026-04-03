@@ -306,7 +306,7 @@ export default function SettingsPage() {
                   <Button variant="destructive" onClick={() => {
                     if (!user) return;
                     if (window.confirm('Are you sure you want to deactivate your account? You will be logged out immediately.')) {
-                      deactivateUser(user.id);
+                      deactivateUser(user.id, true);
                       logout();
                       navigate('/');
                     }
