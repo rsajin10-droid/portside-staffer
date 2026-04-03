@@ -15,7 +15,6 @@ const items = [
   { title: 'Dashboard', url: '/dashboard', icon: LayoutDashboard },
   { title: 'Staff Management', url: '/staff', icon: Users },
   { title: 'Attendance', url: '/attendance', icon: ClipboardCheck },
-  { title: 'Job Allotment', url: '/job-allotment', icon: Truck },
   { title: 'Reports', url: '/reports', icon: FileText },
   { title: 'Driver Logbook', url: '/driver-logbook', icon: BookOpen },
   { title: 'Digital Diary', url: '/digital-diary', icon: BookOpenText },
