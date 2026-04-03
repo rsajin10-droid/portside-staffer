@@ -8,7 +8,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import StaffManagement from "./pages/StaffManagement";
 import Attendance from "./pages/Attendance";
-import JobAllotment from "./pages/JobAllotment";
+
 import Reports from "./pages/Reports";
 import DriverLogbook from "./pages/DriverLogbook";
 import DigitalDiary from "./pages/DigitalDiary";
